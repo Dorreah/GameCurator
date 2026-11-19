@@ -1,0 +1,38 @@
+[package]
+name = "game-curator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Game Curator - offline catalog and archive of a personal DRM-free game collection (Windows 10/11)"
+
+[lib]
+name = "game_curator_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "GameCurator"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+curator-core = { path = "../crates/curator-core" }
+# Only what a Windows WebView2 app needs: no tray, no menus, no runtime ACL,
+# no Linux backends.
+tauri = { version = "2", default-features = false, features = ["wry", "compression", "common-controls-v6"] }
+tauri-plugin-dialog = { version = "2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Registry"] }
+
+[features]
+default = ["custom-protocol"]
+# Serve the bundled frontend (production mode). Required for plain `cargo build`.
+custom-protocol = ["tauri/custom-protocol"]
+# Test harness only - never for distribution. Allows building the app on
+# Linux (WebKitGTK) for automated end-to-end tests: dialogs read paths from
+# GC_E2E_PICK_FILE and Open/Run are logged instead of executed.
+e2e = ["tauri/x11", "tauri-plugin-dialog/gtk3"]

@@ -1,0 +1,10 @@
+// Applies the last used theme before the first paint (no flash of the
+// default theme). config.json stays the source of truth; this is a cache.
+(function () {
+  var theme = 'classic';
+  try { theme = localStorage.getItem('gc-theme') || 'classic'; } catch (e) { /* storage unavailable */ }
+  if (theme !== 'amber' && theme !== 'matrix' && theme !== 'dos') theme = 'classic';
+  var root = document.documentElement;
+  root.setAttribute('data-theme', theme);
+  if (theme !== 'classic') root.classList.add('term');
+})();
