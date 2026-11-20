@@ -15,7 +15,7 @@ use crate::{CoreError, Result};
 #[serde(rename_all = "camelCase", default)]
 pub struct AppConfig {
     /// Visual theme only (layout and controls are identical):
-    /// "classic" (CD-ROM launcher) | "amber" (Terminal CRT Amber) | "matrix" (Matrix terminal)
+    /// "classic" (VGA launcher) | "amber" (Terminal CRT Amber) | "matrix" (Matrix terminal)
     /// | "dos" (DOS Midnight: MS-DOS text mode, darker)
     pub theme: String,
     /// "grid" | "catalog"
@@ -35,6 +35,14 @@ pub struct AppConfig {
     pub profile_split: f64,
     /// Show the welcome window when Game Curator starts.
     pub show_welcome: bool,
+    /// Font of the Classic look: "pixel-operator" | "dogica" | "geist-pixel"
+    /// | "roboto-slab" (the text-mode themes have their own).
+    pub classic_font: String,
+    /// After a game started with Play has ended, offer to write a journal entry.
+    pub journal_prompt: bool,
+    /// Open PDF manuals in Game Curator's viewer and music in its player
+    /// (otherwise in the default Windows application).
+    pub builtin_viewer: bool,
 }
 
 /// Default left column of the game profile, in percent (the archive gets
@@ -63,6 +71,9 @@ impl Default for AppConfig {
             auto_backup_keep: 10,
             profile_split: PROFILE_SPLIT_DEFAULT,
             show_welcome: true,
+            classic_font: "pixel-operator".into(),
+            journal_prompt: true,
+            builtin_viewer: true,
         }
     }
 }
@@ -80,6 +91,7 @@ impl AppConfig {
         check(&self.view_mode, &["grid", "catalog"], "view mode")?;
         check(&self.card_size, &["small", "medium", "large"], "card size")?;
         check(&self.sort, SORTS, "sort order")?;
+        check(&self.classic_font, CLASSIC_FONTS, "font")?;
         self.scan_depth = self.scan_depth.clamp(1, 6);
         self.auto_backup_keep = self.auto_backup_keep.clamp(1, 100);
         self.profile_split = clamp_split(self.profile_split);
@@ -103,6 +115,9 @@ impl AppConfig {
         if !SORTS.contains(&self.sort.as_str()) {
             self.sort = d.sort;
         }
+        if !CLASSIC_FONTS.contains(&self.classic_font.as_str()) {
+            self.classic_font = d.classic_font;
+        }
         self.scan_depth = self.scan_depth.clamp(1, 6);
         self.auto_backup_keep = self.auto_backup_keep.clamp(1, 100);
         self.profile_split = clamp_split(self.profile_split);
@@ -112,6 +127,7 @@ impl AppConfig {
 
 const THEMES: &[&str] = &["classic", "amber", "matrix", "dos"];
 const SORTS: &[&str] = &["title", "year", "added", "size"];
+const CLASSIC_FONTS: &[&str] = &["pixel-operator", "dogica", "geist-pixel", "roboto-slab"];
 
 /// Loads the configuration. A missing file yields defaults; a damaged file
 /// is kept as `config.json.bad` and defaults are used.

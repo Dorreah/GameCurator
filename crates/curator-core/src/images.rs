@@ -180,7 +180,7 @@ pub fn rerender_thumbnail(layout: &ArchiveLayout, artwork_rel: &str, crop: &Crop
     Ok(format!("Data/Thumbnails/{name}"))
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes)?;
     fs::rename(&tmp, path)?;
@@ -288,11 +288,13 @@ pub fn remove_artwork_files(layout: &ArchiveLayout, artwork: Option<&str>, thumb
 }
 
 /// Removes `cover-*.webp` files that no game references (e.g. artwork chosen
-/// in a form that was then cancelled). Returns the number of removed files.
+/// in a form that was then cancelled), and previews and cached icons nobody
+/// uses any more. Returns the number of removed files.
 pub fn cleanup_orphans(conn: &Connection, layout: &ArchiveLayout) -> Result<usize> {
     let mut used = std::collections::HashSet::new();
     let mut stmt = conn.prepare(
-        "SELECT artwork_path, thumbnail_path FROM games UNION ALL SELECT image_path, thumbnail_path FROM screenshots",
+        "SELECT artwork_path, thumbnail_path FROM games UNION ALL SELECT icon_path, NULL FROM games
+         UNION ALL SELECT image_path, thumbnail_path FROM screenshots",
     )?;
     let rows = stmt.query_map([], |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)))?;
     for row in rows {
@@ -310,7 +312,8 @@ pub fn cleanup_orphans(conn: &Connection, layout: &ArchiveLayout) -> Result<usiz
             let name = e.file_name().to_string_lossy().into_owned();
             // covers and previews can always be made again; screenshot copies
             // themselves are never removed automatically (only unfinished .tmp)
-            let ours = (name.starts_with("cover-") || name.starts_with("shot-")) && (name.ends_with(".webp") || name.ends_with(".tmp"));
+            let ours = (name.starts_with("cover-") || name.starts_with("shot-") || name.starts_with("icon-"))
+                && (name.ends_with(".webp") || name.ends_with(".tmp"));
             if ours && !used.contains(&name) && fs::remove_file(e.path()).is_ok() {
                 removed += 1;
             }

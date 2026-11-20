@@ -33,6 +33,8 @@ pub struct GameCard {
     pub total_size: i64,
     /// Installed on this computer (detected or located by the user).
     pub is_installed: bool,
+    /// Cached icon of the installed game (Data/Thumbnails/icon-*.webp).
+    pub icon_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -557,8 +559,11 @@ pub struct RemoveOptions {
 
 pub fn remove_game_with(conn: &mut Connection, layout: &ArchiveLayout, id: i64, opts: &RemoveOptions) -> Result<RemovalSummary> {
     let preview = removal_preview(conn, layout, id)?;
-    let (art, thumb): (Option<String>, Option<String>) =
-        conn.query_row("SELECT artwork_path, thumbnail_path FROM games WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    let (art, thumb, icon): (Option<String>, Option<String>, Option<String>) = conn.query_row(
+        "SELECT artwork_path, thumbnail_path, icon_path FROM games WHERE id = ?1",
+        [id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
     let shots = crate::screenshots::files_of_game(conn, id)?;
     let copies = crate::additions::copies_of_game(conn, layout, id)?;
     let tx = conn.transaction()?;
@@ -566,6 +571,7 @@ pub fn remove_game_with(conn: &mut Connection, layout: &ArchiveLayout, id: i64, 
     tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM game_tags)", [])?;
     tx.commit()?;
     images::remove_artwork_files(layout, art.as_deref(), thumb.as_deref());
+    images::remove_artwork_files(layout, None, icon.as_deref());
     // copies Game Curator made for this game, only when the user chose so;
     // the player's originals, linked files and the game folder stay untouched
     if opts.delete_screenshots {
@@ -603,6 +609,7 @@ fn card_from_row(r: &Row) -> rusqlite::Result<GameCard> {
         file_count: r.get(8)?,
         total_size: r.get(9)?,
         is_installed: r.get::<_, i64>(10)? != 0,
+        icon_path: r.get(11)?,
     })
 }
 
@@ -612,7 +619,7 @@ pub fn list_games(conn: &Connection, q: &LibraryQuery, machine: &str) -> Result<
     let mut sql = String::from(
         "SELECT g.id, g.title, g.developer, g.genre, g.release_year, g.is_available, g.thumbnail_path, g.folder_path,
                 COALESCE(f.n, 0), COALESCE(f.bytes, 0),
-                EXISTS(SELECT 1 FROM installations i WHERE i.game_id = g.id AND i.machine = ?)
+                EXISTS(SELECT 1 FROM installations i WHERE i.game_id = g.id AND i.machine = ?), g.icon_path
          FROM games g
          LEFT JOIN (SELECT game_id, COUNT(*) AS n, SUM(size_bytes) AS bytes FROM files WHERE is_missing = 0 GROUP BY game_id) f
                 ON f.game_id = g.id",

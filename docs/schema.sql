@@ -1,8 +1,8 @@
--- Game Curator database schema, version 4.
+-- Game Curator database schema, version 5.
 -- Version 2 removed play status, ratings and favourites (Game Curator is an
 -- archive, not a backlog). Version 3 added the cover crop and installed games
--- per PC. Version 4 added screenshots and additional files. See db.rs for the
--- upgrades.
+-- per PC. Version 4 added screenshots and additional files. Version 5 added
+-- game icons and catalog names of files. See db.rs for the upgrades.
 -- All paths are stored relative to the archive root (forward slashes) unless the
 -- target lives on another drive, in which case the absolute path is stored.
 
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS games (
     artwork_path    TEXT,                                 -- Data/Artwork/Covers/*.webp
     thumbnail_path  TEXT,                                 -- Data/Thumbnails/*.webp, rendered from the crop
     cover_crop      TEXT,                                 -- JSON {"x","y","w","h"}, fractions of the cover; NULL = centred
+    icon_path       TEXT,                                 -- Data/Thumbnails/icon-*.webp, read from an installation
     archive_notes   TEXT    NOT NULL DEFAULT '',          -- "What I know about this game"
     is_available    INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1)),
     date_added      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS files (
     game_id         INTEGER NOT NULL REFERENCES games (id) ON DELETE CASCADE,
     file_path       TEXT    NOT NULL,                     -- relative to the game folder
     filename        TEXT    NOT NULL,
+    display_name    TEXT,                                 -- name shown in the catalog (NULL = filename); the file keeps its name
     file_type       TEXT    NOT NULL,                     -- auto-detected category
     custom_category TEXT,                                 -- user override (NULL = use file_type)
     is_primary      INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
@@ -126,6 +128,7 @@ CREATE TABLE IF NOT EXISTS additions (
     kind        TEXT    NOT NULL CHECK (kind IN ('copy', 'link')),
     path        TEXT    NOT NULL,
     filename    TEXT    NOT NULL,
+    display_name TEXT,                                -- name shown in the catalog (NULL = filename)
     category    TEXT    NOT NULL DEFAULT 'other' CHECK (category IN ('fix', 'patch', 'mod', 'bonus', 'other')),
     note        TEXT    NOT NULL DEFAULT '',
     size_bytes  INTEGER NOT NULL DEFAULT 0,

@@ -18,8 +18,11 @@ compile_error!(
 mod commands;
 mod dragdrop;
 mod protocol;
+mod session;
 mod state;
 mod system;
+mod viewer;
+mod offer;
 
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -35,11 +38,12 @@ const TITLE: &str = "Game Curator";
 /// WebView2 switches: keep Tauri's defaults (no SmartScreen / Office UI
 /// services) and switch off every background network service, sync and most
 /// disk caching - the app is offline and its pages come from inside the exe,
-/// so this saves memory, CPU and writes to the USB drive.
+/// so this saves memory, CPU and writes to the USB drive. The music player
+/// may start the track the user opened without a second click.
 #[cfg(windows)]
-const WEBVIEW2_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
+pub(crate) const WEBVIEW2_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
 --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync \
---no-pings --disk-cache-size=1048576 --disable-gpu-shader-disk-cache";
+--no-pings --disk-cache-size=1048576 --disable-gpu-shader-disk-cache --autoplay-policy=no-user-gesture-required";
 
 pub fn run() {
     let root = match system::archive_root() {
@@ -101,6 +105,9 @@ pub fn run() {
         machine: system::machine_name(),
         picked: Mutex::new(Default::default()),
         pick_counter: Default::default(),
+        running_games: Mutex::new(Default::default()),
+        viewers: Mutex::new(Default::default()),
+        offers: Mutex::new(Default::default()),
     };
 
     let built = tauri::Builder::default()
@@ -150,6 +157,8 @@ pub fn run() {
             commands::show_addition,
             commands::archive_content,
             commands::set_file_category,
+            commands::set_file_display_name,
+            commands::running_games,
             commands::set_primary_file,
             commands::open_file,
             commands::run_file,
@@ -165,6 +174,12 @@ pub fn run() {
             commands::list_backups,
             commands::restore_backup,
             commands::check_writable,
+            viewer::viewer_document,
+            viewer::player_state,
+            viewer::media_read,
+            viewer::media_open_external,
+            offer::journal_offer,
+            offer::answer_journal_offer,
         ])
         .setup(move |app| {
             std::fs::create_dir_all(&webview_dir)?;
@@ -177,10 +192,12 @@ pub fn run() {
             let builder = builder.additional_browser_args(WEBVIEW2_ARGS);
             let win = builder.build()?;
             let drop_win = win.clone();
-            win.on_window_event(move |ev| {
-                if let tauri::WindowEvent::DragDrop(d) = ev {
-                    dragdrop::handle(&drop_win, d);
-                }
+            let handle = app.handle().clone();
+            win.on_window_event(move |ev| match ev {
+                tauri::WindowEvent::DragDrop(d) => dragdrop::handle(&drop_win, d),
+                // the PDF viewers and the music player close with the main window
+                tauri::WindowEvent::Destroyed => viewer::close_all(&handle),
+                _ => {}
             });
             Ok(())
         })

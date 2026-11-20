@@ -33,6 +33,8 @@ pub struct Addition {
     /// The path for display (absolute on this computer).
     pub location: String,
     pub filename: String,
+    /// Name shown in the catalog instead of the file name (the file keeps its name).
+    pub display_name: Option<String>,
     pub category: String,
     pub note: String,
     pub size_bytes: i64,
@@ -60,6 +62,9 @@ pub struct CopiedFile {
 pub struct AdditionInput {
     pub category: String,
     pub note: String,
+    /// Name shown in the catalog: `None` keeps the current one, an empty
+    /// string restores the file name. Only used when editing.
+    pub display_name: Option<String>,
 }
 
 impl AdditionInput {
@@ -76,7 +81,7 @@ impl AdditionInput {
     }
 }
 
-const SELECT: &str = "SELECT id, game_id, kind, path, filename, category, note, size_bytes, date_added FROM additions";
+const SELECT: &str = "SELECT id, game_id, kind, path, filename, category, note, size_bytes, date_added, display_name FROM additions";
 
 fn from_row(layout: &ArchiveLayout) -> impl Fn(&Row) -> rusqlite::Result<Addition> + '_ {
     move |r| {
@@ -98,6 +103,7 @@ fn from_row(layout: &ArchiveLayout) -> impl Fn(&Row) -> rusqlite::Result<Additio
             note: r.get(6)?,
             size_bytes: r.get(7)?,
             date_added: r.get(8)?,
+            display_name: r.get(9)?,
         })
     }
 }
@@ -252,9 +258,18 @@ pub fn add_link(conn: &Connection, layout: &ArchiveLayout, game_id: i64, source:
 
 pub fn update(conn: &Connection, layout: &ArchiveLayout, id: i64, input: &AdditionInput) -> Result<Addition> {
     let (category, note) = input.validated()?;
-    let n = conn.execute("UPDATE additions SET category = ?1, note = ?2 WHERE id = ?3", params![category, note, id])?;
-    if n == 0 {
-        return Err(CoreError::not_found("The file is no longer in the list."));
+    let filename: String = conn
+        .query_row("SELECT filename FROM additions WHERE id = ?1", [id], |r| r.get(0))
+        .optional()?
+        .ok_or_else(|| CoreError::not_found("The file is no longer in the list."))?;
+    // only the name in the catalog changes: the file itself is never renamed
+    let name = match input.display_name.as_deref() {
+        Some(raw) => Some(crate::text::display_name(raw, &filename)?),
+        None => None,
+    };
+    conn.execute("UPDATE additions SET category = ?1, note = ?2 WHERE id = ?3", params![category, note, id])?;
+    if let Some(clean) = name {
+        conn.execute("UPDATE additions SET display_name = ?1 WHERE id = ?2", params![clean, id])?;
     }
     get(conn, layout, id)
 }

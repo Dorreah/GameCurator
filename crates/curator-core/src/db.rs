@@ -15,7 +15,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
 use crate::{CoreError, Result};
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 /// Current schema, used for new databases.
 const SCHEMA: &str = include_str!("schema.sql");
 /// Version 1 -> 2: play status, ratings and favourites were removed.
@@ -73,6 +73,14 @@ const MIGRATE_3_TO_4: &str = "
     );
     CREATE INDEX IF NOT EXISTS idx_additions_game ON additions (game_id);
     PRAGMA user_version = 4;";
+/// Version 4 -> 5: icons of installed games (a cached copy) and names shown in
+/// the catalog for archive files and additional files (the files on disk keep
+/// their names).
+const MIGRATE_4_TO_5: &str = "
+    ALTER TABLE games ADD COLUMN icon_path TEXT;
+    ALTER TABLE files ADD COLUMN display_name TEXT;
+    ALTER TABLE additions ADD COLUMN display_name TEXT;
+    PRAGMA user_version = 5;";
 
 pub fn open_connection(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(
@@ -119,6 +127,9 @@ pub fn migrate(conn: &Connection, db_path: Option<&Path>) -> Result<()> {
         }
         if version < 4 {
             tx.execute_batch(MIGRATE_3_TO_4)?;
+        }
+        if version < 5 {
+            tx.execute_batch(MIGRATE_4_TO_5)?;
         }
         tx.commit()?;
     }

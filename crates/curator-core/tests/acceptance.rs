@@ -17,7 +17,8 @@ use curator_core::images::Crop;
 use curator_core::installs::{self, InstalledProgram};
 use curator_core::additions::{self, AdditionInput};
 use curator_core::screenshots;
-use curator_core::{backup, files, images, paths, CoreError};
+use curator_core::media::{self, MediaKind};
+use curator_core::{backup, files, icons, images, paths, CoreError};
 
 // ------------------------------------------------------------- Test 1 + 2
 
@@ -656,6 +657,27 @@ fn config_roundtrip_and_corruption() {
     let mut bad = cfg.clone();
     bad.theme = "neon".into();
     assert!(bad.validate().is_err());
+    // font of the Classic look and the journal offer after playing
+    assert_eq!((old.classic_font.as_str(), old.journal_prompt), ("pixel-operator", true), "defaults for older files");
+    let mut f = cfg.clone();
+    f.classic_font = "dogica".into();
+    f.journal_prompt = false;
+    curator_core::config::save(&path, &f.clone().validate().unwrap()).unwrap();
+    let back = curator_core::config::load(&path);
+    assert_eq!((back.classic_font.as_str(), back.journal_prompt), ("dogica", false));
+    for font in ["geist-pixel", "roboto-slab", "pixel-operator"] {
+        f.classic_font = font.into();
+        assert!(f.clone().validate().is_ok(), "{font}");
+    }
+    f.classic_font = "comic-sans".into();
+    assert!(f.validate().is_err());
+    fs::write(&path, r#"{"classicFont":"wingdings","journalPrompt":false}"#).unwrap();
+    let odd = curator_core::config::load(&path);
+    assert_eq!((odd.classic_font.as_str(), odd.journal_prompt), ("pixel-operator", false), "unknown font falls back");
+    // manuals and music open in Game Curator unless switched off
+    assert!(old.builtin_viewer && odd.builtin_viewer, "on by default, also for older files");
+    fs::write(&path, r#"{"builtinViewer":false}"#).unwrap();
+    assert!(!curator_core::config::load(&path).builtin_viewer);
     // options removed in later versions do not reset the rest of the settings
     fs::write(&path, r#"{"theme":"amber","viewMode":"catalog","startScreen":"journal","sort":"developer","cardSize":"large"}"#).unwrap();
     let legacy = curator_core::config::load(&path);
@@ -1059,7 +1081,7 @@ fn additional_files_are_copied_or_linked() {
     fs::write(&fix, vec![7u8; 4096]).unwrap();
     let doc = downloads.join("Making of.mkv");
     fs::write(&doc, vec![1u8; 10_000]).unwrap();
-    let inp = |c: &str, n: &str| AdditionInput { category: c.into(), note: n.into() };
+    let inp = |c: &str, n: &str| AdditionInput { category: c.into(), note: n.into(), ..Default::default() };
 
     // copy into the archive: travels with the drive, original stays
     let a1 = additions::add_copy(a.db.conn().unwrap(), &a.layout, id, &fix, &inp("fix", "Needed on Windows 11")).unwrap();
@@ -1121,4 +1143,306 @@ fn additional_files_are_copied_or_linked() {
     games::remove_game_with(a.db.conn().unwrap(), &a.layout, id, &opts).unwrap();
     assert!(!a.layout.root.join(&again.path).exists());
     assert!(fix.is_file() && dir.join("setup_old_game.exe").is_file());
+}
+
+// ------------------------------------------------------------- icons, catalog names
+
+fn png_bytes(w: u32, h: u32, rgb: [u8; 3]) -> Vec<u8> {
+    let img = image::RgbaImage::from_pixel(w, h, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
+    let mut out = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Png).unwrap();
+    out.into_inner()
+}
+
+/// A 32-bit bitmap icon image as stored in a resource (header, colours, mask).
+fn dib_bytes(size: u32, rgb: [u8; 3]) -> Vec<u8> {
+    let mut d = Vec::new();
+    for v in [40u32, size, size * 2] {
+        d.extend_from_slice(&v.to_le_bytes());
+    }
+    d.extend_from_slice(&1u16.to_le_bytes());
+    d.extend_from_slice(&32u16.to_le_bytes());
+    d.extend_from_slice(&[0u8; 24]);
+    for _ in 0..size * size {
+        d.extend_from_slice(&[rgb[2], rgb[1], rgb[0], 255]);
+    }
+    let mask_row = size.div_ceil(32) * 4;
+    d.extend(std::iter::repeat(0u8).take((mask_row * size) as usize));
+    d
+}
+
+/// A minimal Windows program (PE32) whose resources hold one icon group with
+/// the given images (width, data). Nothing in it is ever run.
+fn pe_with_icons(images: &[(u32, Vec<u8>)]) -> Vec<u8> {
+    const VA: u32 = 0x1000;
+    let dir = |entries: &[(u32, u32)]| -> Vec<u8> {
+        let mut b = vec![0u8; 12];
+        b.extend_from_slice(&0u16.to_le_bytes());
+        b.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        for (id, off) in entries {
+            b.extend_from_slice(&id.to_le_bytes());
+            b.extend_from_slice(&off.to_le_bytes());
+        }
+        b
+    };
+    let n = images.len() as u32;
+    // layout of the resource section: directories, data entries, then data
+    let root_len = 16 + 2 * 8;
+    let l1_icon = root_len;
+    let l1_icon_len = 16 + n * 8;
+    let l1_group = l1_icon + l1_icon_len;
+    let l2_icons = l1_group + 24;
+    let l2_group = l2_icons + n * 24;
+    let entries_at = l2_group + 24;
+    let data_at = entries_at + (n + 1) * 16;
+    let mut group = vec![0, 0, 1, 0];
+    group.extend_from_slice(&(n as u16).to_le_bytes());
+    let mut blobs: Vec<Vec<u8>> = Vec::new();
+    for (i, (w, data)) in images.iter().enumerate() {
+        group.extend_from_slice(&[*w as u8, *w as u8, 0, 0, 1, 0, 32, 0]);
+        group.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        group.extend_from_slice(&((i + 1) as u16).to_le_bytes());
+        blobs.push(data.clone());
+    }
+    blobs.push(group);
+    let mut sec = Vec::new();
+    sec.extend(dir(&[(3, l1_icon | 0x8000_0000), (14, l1_group | 0x8000_0000)]));
+    sec.extend(dir(&(0..n).map(|i| (i + 1, (l2_icons + i * 24) | 0x8000_0000)).collect::<Vec<_>>()));
+    sec.extend(dir(&[(1, l2_group | 0x8000_0000)]));
+    for i in 0..n {
+        sec.extend(dir(&[(0x409, entries_at + i * 16)]));
+    }
+    sec.extend(dir(&[(0x409, entries_at + n * 16)]));
+    let mut at = data_at;
+    for b in &blobs {
+        for v in [VA + at, b.len() as u32, 0, 0] {
+            sec.extend_from_slice(&v.to_le_bytes());
+        }
+        at += b.len() as u32;
+    }
+    for b in &blobs {
+        sec.extend_from_slice(b);
+    }
+    let mut f = vec![0u8; 0x40];
+    f[..2].copy_from_slice(b"MZ");
+    f[0x3c..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+    f.extend_from_slice(b"PE\0\0");
+    f.extend_from_slice(&0x14cu16.to_le_bytes());
+    f.extend_from_slice(&1u16.to_le_bytes());
+    f.extend_from_slice(&[0u8; 12]);
+    f.extend_from_slice(&224u16.to_le_bytes());
+    f.extend_from_slice(&0x0102u16.to_le_bytes());
+    let mut opt = vec![0u8; 224];
+    opt[..2].copy_from_slice(&0x10bu16.to_le_bytes());
+    opt[92..96].copy_from_slice(&16u32.to_le_bytes());
+    opt[112..116].copy_from_slice(&VA.to_le_bytes());
+    opt[116..120].copy_from_slice(&(sec.len() as u32).to_le_bytes());
+    f.extend(opt);
+    let mut sh = [0u8; 40];
+    sh[..5].copy_from_slice(b".rsrc");
+    for (i, v) in [sec.len() as u32, VA, sec.len() as u32, 0x200].iter().enumerate() {
+        sh[8 + i * 4..12 + i * 4].copy_from_slice(&v.to_le_bytes());
+    }
+    f.extend_from_slice(&sh);
+    f.resize(0x200, 0);
+    f.extend(sec);
+    f
+}
+
+fn ico_file(path: &std::path::Path, size: u32, rgb: [u8; 3]) {
+    let img = image::RgbaImage::from_pixel(size, size, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
+    let mut out = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Ico).unwrap();
+    fs::write(path, out.into_inner()).unwrap();
+}
+
+fn icon_px(layout: &archive::ArchiveLayout, rel: &str) -> (u32, [u8; 4]) {
+    let img = image::open(layout.root.join(rel)).unwrap().to_rgba8();
+    (img.width(), img.get_pixel(24, 24).0)
+}
+
+#[test]
+fn icons_are_read_from_programs_without_running_them() {
+    let fx = Fixture::new();
+    let dir = fx.drive("C").join("Programs");
+    fs::create_dir_all(&dir).unwrap();
+    // the largest image of the first group wins; a bitmap-only icon works too
+    let exe = dir.join("game.exe");
+    fs::write(&exe, pe_with_icons(&[(16, dib_bytes(16, [200, 0, 0])), (32, png_bytes(32, 32, [0, 0, 220]))])).unwrap();
+    let imgs = icons::exe_icon_images(&exe).expect("icon found");
+    assert_eq!(imgs.len(), 2);
+    assert!(imgs[0].starts_with(b"\x89PNG"), "32 px PNG first");
+    let icon = icons::read_icon(&dir, Some(&exe)).unwrap();
+    assert_eq!(icon.dimensions(), (48, 48));
+    let c = icon.get_pixel(24, 24).0;
+    assert!(c[2] > 180 && c[0] < 40, "blue PNG image used: {c:?}");
+    let bmp = dir.join("old.exe");
+    fs::write(&bmp, pe_with_icons(&[(16, dib_bytes(16, [200, 0, 0]))])).unwrap();
+    let icon = icons::read_icon(&dir, Some(&bmp)).unwrap();
+    let c = icon.get_pixel(24, 24).0;
+    assert!(c[0] > 180 && c[2] < 40 && c[3] == 255, "16 px bitmap enlarged 3x: {c:?}");
+    // not a program, no icon, damaged headers: simply no icon
+    let junk = dir.join("junk.exe");
+    fs::write(&junk, b"MZ this is not a program").unwrap();
+    assert!(icons::exe_icon_images(&junk).is_none());
+    let mut broken = pe_with_icons(&[(32, png_bytes(32, 32, [0, 0, 220]))]);
+    broken.truncate(0x230);
+    fs::write(&junk, &broken).unwrap();
+    assert!(icons::exe_icon_images(&junk).is_none());
+    assert!(icons::read_icon(&dir, None).is_none());
+    // reading never changes the program
+    assert_eq!(fs::read(&exe).unwrap(), pe_with_icons(&[(16, dib_bytes(16, [200, 0, 0])), (32, png_bytes(32, 32, [0, 0, 220]))]));
+}
+
+#[test]
+fn installed_games_get_cached_icons_for_the_catalog() {
+    let fx = Fixture::new();
+    let mut a = fx.open("D");
+    let gdir = a.layout.games_dir().join("Gothic");
+    fs::create_dir_all(&gdir).unwrap();
+    touch(&gdir.join("setup_gothic.exe"), 10);
+    let id = add_game(&mut a, "Gothic", &gdir);
+    let inst = fx.drive("C").join("GOG Games").join("Gothic");
+    fs::create_dir_all(&inst).unwrap();
+    let exe = inst.join("Gothic.exe");
+    let exe_bytes = pe_with_icons(&[(32, png_bytes(32, 32, [0, 0, 220]))]);
+    fs::write(&exe, &exe_bytes).unwrap();
+    ico_file(&inst.join("goggame-1207658795.ico"), 48, [220, 120, 0]);
+    let conn = a.db.conn().unwrap();
+    installs::set_manual(conn, "PC-1", id, &exe).unwrap();
+
+    // GOG's .ico comes first
+    assert_eq!(icons::refresh_icons(conn, &a.layout, "PC-1").unwrap(), 1);
+    let card = |conn: &rusqlite::Connection| games::list_games(conn, &LibraryQuery::default(), "PC-1").unwrap().remove(0);
+    let first = card(conn).icon_path.expect("icon cached");
+    assert!(first.starts_with("Data/Thumbnails/icon-") && first.ends_with(".webp"));
+    let (w, c) = icon_px(&a.layout, &first);
+    assert!(w == 48 && c[0] > 180 && c[2] < 60, "orange GOG icon: {c:?}");
+    assert_eq!(icons::refresh_icons(conn, &a.layout, "PC-1").unwrap(), 0, "already cached");
+    // without the .ico the program's icon is used; the old copy is replaced
+    fs::remove_file(inst.join("goggame-1207658795.ico")).unwrap();
+    assert!(icons::update_icon(conn, &a.layout, "PC-1", id, true).unwrap());
+    let second = card(conn).icon_path.unwrap();
+    assert!(second != first && !a.layout.root.join(&first).exists());
+    let (_, c) = icon_px(&a.layout, &second);
+    assert!(c[2] > 180 && c[0] < 40, "blue program icon: {c:?}");
+    assert_eq!(fs::read(&exe).unwrap(), exe_bytes, "the installation is never changed");
+    // another computer: not installed there, nothing read
+    assert_eq!(icons::refresh_icons(conn, &a.layout, "PC-2").unwrap(), 0);
+    // unused icons are cleaned up, the one in use stays
+    let stray = a.layout.thumbnails_dir().join("icon-0123456789abcdef.webp");
+    fs::write(&stray, b"x").unwrap();
+    images::cleanup_orphans(conn, &a.layout).unwrap();
+    assert!(!stray.exists() && a.layout.root.join(&second).is_file());
+    // removing the game removes its cached icon (and nothing in the installation)
+    games::remove_game(a.db.conn().unwrap(), &a.layout, id).unwrap();
+    assert!(!a.layout.root.join(&second).exists());
+    assert!(exe.is_file());
+}
+
+#[test]
+fn files_get_names_in_the_catalog_while_the_files_keep_theirs() {
+    let fx = Fixture::new();
+    let mut a = fx.open("D");
+    let dir = a.layout.games_dir().join("Fallout");
+    fs::create_dir_all(dir.join("Extras")).unwrap();
+    touch(&dir.join("setup_fallout_1.1.exe"), 10);
+    touch(&dir.join("Extras").join("fo1_manual.pdf"), 10);
+    let id = add_game(&mut a, "Fallout", &dir);
+    let content = files::archive_content(a.db.conn().unwrap(), &a.layout, id).unwrap();
+    let setup = content.files.iter().find(|f| f.filename == "setup_fallout_1.1.exe").unwrap().id;
+    let manual = content.files.iter().find(|f| f.filename == "fo1_manual.pdf").unwrap().id;
+    let conn = a.db.conn().unwrap();
+    assert_eq!(files::set_display_name(conn, id, setup, "  Fallout   1.1 installer ").unwrap().as_deref(), Some("Fallout 1.1 installer"));
+    files::set_display_name(conn, id, manual, "Manual (English)").unwrap();
+    // the files on disk keep their names, and the names survive reading the folder again
+    assert!(dir.join("setup_fallout_1.1.exe").is_file() && dir.join("Extras").join("fo1_manual.pdf").is_file());
+    let content = files::archive_content(a.db.conn().unwrap(), &a.layout, id).unwrap();
+    let name = |id: i64| content.files.iter().find(|f| f.id == id).unwrap().display_name.clone();
+    assert_eq!(name(setup).as_deref(), Some("Fallout 1.1 installer"));
+    assert_eq!(name(manual).as_deref(), Some("Manual (English)"));
+    // empty or the file's own name: back to the file name
+    let conn = a.db.conn().unwrap();
+    assert_eq!(files::set_display_name(conn, id, setup, "").unwrap(), None);
+    assert_eq!(files::set_display_name(conn, id, manual, "fo1_manual.pdf").unwrap(), None);
+    assert_eq!(files::set_display_name(conn, id, manual, "Extras/fo1_manual.pdf").unwrap(), None);
+    assert!(files::set_display_name(conn, id, manual, &"x".repeat(121)).is_err(), "too long");
+    assert!(files::set_display_name(conn, id, manual, "bad\u{0}name").is_err(), "control characters");
+    assert!(files::set_display_name(conn, 999, manual, "x").is_err(), "another game's file");
+
+    // additional files: name, kind and note in one edit; None keeps the name
+    let dl = fx.drive("C").join("Downloads");
+    fs::create_dir_all(&dl).unwrap();
+    fs::write(dl.join("fo_fix.zip"), b"PK").unwrap();
+    let inp = |name: Option<&str>| AdditionInput { category: "fix".into(), note: "note".into(), display_name: name.map(Into::into) };
+    let conn = a.db.conn().unwrap();
+    let x = additions::add_link(conn, &a.layout, id, &dl.join("fo_fix.zip"), &inp(None)).unwrap();
+    assert_eq!(x.display_name, None);
+    let x = additions::update(conn, &a.layout, x.id, &inp(Some("High resolution patch"))).unwrap();
+    assert_eq!(x.display_name.as_deref(), Some("High resolution patch"));
+    let x = additions::update(conn, &a.layout, x.id, &inp(None)).unwrap();
+    assert_eq!(x.display_name.as_deref(), Some("High resolution patch"), "kept");
+    assert!(additions::update(conn, &a.layout, x.id, &inp(Some(&"y".repeat(200)))).is_err());
+    assert_eq!(additions::get(conn, &a.layout, x.id).unwrap().note, "note", "nothing changed by a refused edit");
+    let x = additions::update(conn, &a.layout, x.id, &inp(Some(" "))).unwrap();
+    assert_eq!(x.display_name, None);
+    assert!(dl.join("fo_fix.zip").is_file() && x.filename == "fo_fix.zip");
+}
+
+#[test]
+fn manuals_and_soundtracks_open_in_game_curator_read_only() {
+    let fx = Fixture::new();
+    let mut a = fx.open("D");
+    let dir = a.layout.games_dir().join("Baldur's Gate");
+    fs::create_dir_all(dir.join("Soundtrack")).unwrap();
+    touch(&dir.join("setup_bg.exe"), 10);
+    fs::write(dir.join("Manual.pdf"), b"%PDF-1.4 manual").unwrap();
+    for name in ["Track 10 - Finale.mp3", "Track 2 - Candlekeep.mp3", "Track 1 - Intro.ogg"] {
+        touch(&dir.join("Soundtrack").join(name), 100);
+    }
+    touch(&dir.join("Soundtrack").join("cover.jpg"), 10);
+    let id = add_game(&mut a, "Baldur's Gate", &dir);
+    let content = files::archive_content(a.db.conn().unwrap(), &a.layout, id).unwrap();
+    let file = |n: &str| content.files.iter().find(|f| f.filename == n).unwrap().clone();
+    assert_eq!(media::kind_of(&file("Manual.pdf").filename), Some(MediaKind::Pdf));
+    assert_eq!(media::kind_of(&file("setup_bg.exe").filename), None, "programs never open in the viewer");
+    assert_eq!(file("Track 1 - Intro.ogg").category, "music");
+
+    // the playlist: the soundtrack in natural order, catalog names, then additional music
+    let conn = a.db.conn().unwrap();
+    files::set_display_name(conn, id, file("Track 2 - Candlekeep.mp3").id, "Candlekeep").unwrap();
+    let dl = fx.drive("C").join("Downloads");
+    fs::create_dir_all(&dl).unwrap();
+    touch(&dl.join("bonus_theme.flac"), 50);
+    touch(&dl.join("fix.zip"), 5);
+    let inp = AdditionInput { category: "bonus".into(), note: String::new(), display_name: None };
+    let bonus = additions::add_link(conn, &a.layout, id, &dl.join("bonus_theme.flac"), &inp).unwrap();
+    additions::add_link(conn, &a.layout, id, &dl.join("fix.zip"), &inp).unwrap();
+    let tracks = media::game_tracks(conn, &a.layout, id).unwrap();
+    let names: Vec<_> = tracks.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["Track 1 - Intro", "Candlekeep", "Track 10 - Finale", "bonus_theme"]);
+    assert_eq!((tracks[3].source, tracks[3].id, tracks[3].size), ("addition", bonus.id, 50));
+    assert!(tracks[..3].iter().all(|t| t.source == "archive" && t.path.starts_with(&dir) && t.size == 100));
+    assert_eq!(media::game_title(conn, id).unwrap(), "Baldur's Gate");
+    assert_eq!(media::file_title(conn, id, file("Manual.pdf").id).unwrap(), "Manual");
+    assert!(media::file_title(conn, 999, file("Manual.pdf").id).is_err(), "another game's file");
+
+    // a missing track is left out, its record stays; a tampered record is never played
+    fs::remove_file(dir.join("Soundtrack").join("Track 10 - Finale.mp3")).unwrap();
+    files::archive_content(a.db.conn().unwrap(), &a.layout, id).unwrap();
+    touch(&a.layout.games_dir().join("outside.mp3"), 10);
+    let conn = a.db.conn().unwrap();
+    conn.execute("INSERT INTO files (game_id, file_path, filename, file_type) VALUES (?1, '../outside.mp3', 'outside.mp3', 'music')", [id]).unwrap();
+    let names: Vec<_> = media::game_tracks(conn, &a.layout, id).unwrap().into_iter().map(|t| t.name).collect();
+    assert_eq!(names, ["Track 1 - Intro", "Candlekeep", "bonus_theme"]);
+    let records: i64 = conn.query_row("SELECT COUNT(*) FROM files WHERE game_id = ?1 AND filename LIKE 'Track 10%'", [id], |r| r.get(0)).unwrap();
+    assert_eq!(records, 1, "the record of the missing file is kept");
+
+    // reading a manual in parts leaves the file untouched
+    let manual = dir.join("Manual.pdf");
+    let before = fs::metadata(&manual).unwrap().modified().unwrap();
+    assert_eq!(media::read_range(&manual, 0, 8).unwrap(), b"%PDF-1.4");
+    assert_eq!(media::read_range(&manual, 9, 100).unwrap(), b"manual");
+    assert_eq!(fs::read(&manual).unwrap(), b"%PDF-1.4 manual");
+    assert_eq!(fs::metadata(&manual).unwrap().modified().unwrap(), before);
 }

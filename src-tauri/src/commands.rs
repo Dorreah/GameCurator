@@ -14,6 +14,7 @@ use curator_core::games::{
     self, AvailabilityReport, GameCard, GameDetail, GameInput, GamePatch, LibraryFacets, LibraryQuery, RemovalPreview,
     RemovalSummary,
 };
+use curator_core::icons;
 use curator_core::images::{self, Crop, ProcessedArtwork};
 use curator_core::installs::{self, DetectReport, InstallStatus};
 use curator_core::journal::{self, JournalEntry, JournalInput, JournalQuery};
@@ -311,7 +312,13 @@ pub async fn set_cover_crop(state: State<'_, AppState>, id: i64, crop: Crop) -> 
 #[tauri::command]
 pub async fn detect_installs(state: State<'_, AppState>) -> CmdResult<DetectReport> {
     let programs = system::installed_programs();
-    state.with_db(|c, _| installs::refresh(c, &state.machine, &programs))
+    state.with_db(|c, l| {
+        let report = installs::refresh(c, &state.machine, &programs)?;
+        // icons for the catalog: read from the installations, never changed there;
+        // a game whose icon cannot be read simply has none
+        let _ = icons::refresh_icons(c, l, &state.machine);
+        Ok(report)
+    })
 }
 
 #[tauri::command]
@@ -335,7 +342,13 @@ pub async fn locate_install(window: WebviewWindow, state: State<'_, AppState>, g
             .and_then(|p| p.into_path().ok()),
     };
     let Some(path) = path else { return Ok(None) };
-    state.with_db(|c, _| installs::set_manual(c, &state.machine, game_id, &path)).map(Some)
+    state
+        .with_db(|c, l| {
+            let status = installs::set_manual(c, &state.machine, game_id, &path)?;
+            let _ = icons::update_icon(c, l, &state.machine, game_id, true);
+            Ok(status)
+        })
+        .map(Some)
 }
 
 /// Forgets where the game is installed on this computer (the record only).
@@ -355,12 +368,26 @@ pub async fn open_install_folder(state: State<'_, AppState>, game_id: i64) -> Cm
 /// record (never from a path sent by the UI) and must lie inside the
 /// installation folder.
 #[tauri::command]
-pub async fn play_game(state: State<'_, AppState>, game_id: i64, confirmed: bool) -> CmdResult<()> {
+pub async fn play_game(app: tauri::AppHandle, state: State<'_, AppState>, game_id: i64, confirmed: bool) -> CmdResult<()> {
     if !confirmed {
         return Err("Starting a game requires your confirmation.".to_string());
     }
-    let target = state.with_db(|c, _| installs::launch_target(c, &state.machine, game_id))?;
-    system::start_game(&target)
+    let (target, title, dir) = state.with_db(|c, _| {
+        let target = installs::launch_target(c, &state.machine, game_id)?;
+        let title: String = c.query_row("SELECT title FROM games WHERE id = ?1", [game_id], |r| r.get(0))?;
+        let dir = installs::install_dir(c, &state.machine, game_id)?;
+        Ok((target, title, dir))
+    })?;
+    let process = system::start_game(&target)?;
+    // notice when the game ends, to offer a journal entry (only for games started here)
+    crate::session::watch(&app, game_id, title, dir, process);
+    Ok(())
+}
+
+/// Games started with Play that are still running.
+#[tauri::command]
+pub async fn running_games(state: State<'_, AppState>) -> CmdResult<Vec<i64>> {
+    Ok(lock(&state.running_games).iter().copied().collect())
 }
 
 // ---------------------------------------------------------------- archive content
@@ -375,6 +402,12 @@ pub async fn set_file_category(state: State<'_, AppState>, game_id: i64, file_id
     state.with_db(|c, _| files::set_category(c, game_id, file_id, category.as_deref()))
 }
 
+/// The name the catalog shows for a file; the file on disk keeps its name.
+#[tauri::command]
+pub async fn set_file_display_name(state: State<'_, AppState>, game_id: i64, file_id: i64, name: String) -> CmdResult<Option<String>> {
+    state.with_db(|c, _| files::set_display_name(c, game_id, file_id, &name))
+}
+
 #[tauri::command]
 pub async fn set_primary_file(state: State<'_, AppState>, game_id: i64, file_id: Option<i64>) -> CmdResult<()> {
     state.with_db(|c, _| files::set_primary(c, game_id, file_id))
@@ -383,7 +416,7 @@ pub async fn set_primary_file(state: State<'_, AppState>, game_id: i64, file_id:
 /// Opens a document/image/music file with its default application.
 /// Programs and scripts are refused here (see `run_file`).
 #[tauri::command]
-pub async fn open_file(state: State<'_, AppState>, game_id: i64, file_id: i64) -> CmdResult<()> {
+pub async fn open_file(app: AppHandle, state: State<'_, AppState>, game_id: i64, file_id: i64) -> CmdResult<&'static str> {
     let (path, name) = state.with_db(|c, l| files::resolve_file(c, l, game_id, file_id))?;
     if files::is_risky(&name) {
         return Err(if files::is_runnable(&name) {
@@ -392,7 +425,14 @@ pub async fn open_file(state: State<'_, AppState>, game_id: i64, file_id: i64) -
             "For safety, Game Curator does not open script or shortcut files. Use \u{201c}Open Folder\u{201d} instead.".to_string()
         });
     }
-    system::shell_open(&path)
+    // PDF manuals and music open in Game Curator's own viewer / player
+    if lock(&state.config).builtin_viewer {
+        if let Some(opened) = crate::viewer::open_archive_file(&app, game_id, file_id, &path, &name)? {
+            return Ok(opened);
+        }
+    }
+    system::shell_open(&path)?;
+    Ok("external")
 }
 
 /// Starts an `.exe` / `.msi` file. The UI must have asked the user first;
@@ -693,7 +733,7 @@ pub async fn remove_addition(state: State<'_, AppState>, id: i64, delete_copy: b
 }
 
 #[tauri::command]
-pub async fn open_addition(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+pub async fn open_addition(app: AppHandle, state: State<'_, AppState>, id: i64) -> CmdResult<&'static str> {
     let p = state.with_db(|c, l| additions::file(c, l, id))?;
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if files::is_risky(&name) {
@@ -703,7 +743,13 @@ pub async fn open_addition(state: State<'_, AppState>, id: i64) -> CmdResult<()>
             "For safety, Game Curator does not open script or shortcut files. Use \u{201c}Show in folder\u{201d} instead.".to_string()
         });
     }
-    system::shell_open(&p)
+    if lock(&state.config).builtin_viewer {
+        if let Some(opened) = crate::viewer::open_addition_file(&app, id, &p)? {
+            return Ok(opened);
+        }
+    }
+    system::shell_open(&p)?;
+    Ok("external")
 }
 
 /// Starts an `.exe` / `.msi` additional file (a patch installer). The UI asks first.

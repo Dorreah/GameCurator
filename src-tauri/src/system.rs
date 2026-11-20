@@ -164,21 +164,61 @@ pub fn shell_open(path: &Path) -> Result<(), String> {
     }
 }
 
-/// Starts an installed game (after the user confirmed it).
-pub fn start_game(target: &curator_core::installs::LaunchTarget) -> Result<(), String> {
+/// Starts an installed game (after the user confirmed it). Returns the
+/// started program when Windows gives a handle to it, so the end of the game
+/// can be noticed (`session`).
+pub fn start_game(target: &curator_core::installs::LaunchTarget) -> Result<Option<crate::session::GameProcess>, String> {
     #[cfg(feature = "e2e")]
     if let Some(r) = e2e_log("PLAY", &target.exe) {
-        return r;
+        r?;
+        // test harness: a stand-in "game" (a launcher script) can be started
+        if let Some(cmd) = std::env::var_os("GC_E2E_GAME_CMD") {
+            let child = std::process::Command::new(cmd).current_dir(&target.working_dir).spawn().map_err(|e| e.to_string())?;
+            return Ok(Some(crate::session::GameProcess::Child(child)));
+        }
+        return Ok(None);
     }
     #[cfg(windows)]
     {
-        shell_execute(&target.exe, &target.arguments, Some(&target.working_dir))
+        shell_execute_watch(&target.exe, &target.arguments, &target.working_dir)
+            .map(|h| h.map(crate::session::GameProcess::Handle))
     }
     #[cfg(not(windows))]
     {
         let _ = target;
         Err("Starting games is only supported on Windows.".to_string())
     }
+}
+
+/// ShellExecuteExW "open" that keeps a handle to the started process.
+#[cfg(windows)]
+fn shell_execute_watch(path: &Path, params: &str, dir: &Path) -> Result<Option<crate::session::WinHandle>, String> {
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let file = win::wide_path(path);
+    let dir = win::wide_path(dir);
+    let params = (!params.trim().is_empty()).then(|| win::wide(params.trim()));
+    let verb = win::wide("open");
+    let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOCLOSEPROCESS;
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = file.as_ptr();
+    info.lpParameters = params.as_ref().map(|p| p.as_ptr()).unwrap_or(std::ptr::null());
+    info.lpDirectory = dir.as_ptr();
+    info.nShow = SW_SHOWNORMAL;
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        let code = unsafe { GetLastError() };
+        return Err(match code {
+            2 | 3 => "The file was not found.".to_string(),
+            5 => "Windows denied access (the action may have been cancelled).".to_string(),
+            1155 => "No application is associated with this file type.".to_string(),
+            1223 => "Starting the game was cancelled.".to_string(),
+            _ => format!("Windows could not start the game (code {code})."),
+        });
+    }
+    Ok((!info.hProcess.is_null()).then(|| crate::session::WinHandle(info.hProcess as isize)))
 }
 
 /// Name of this computer: the key of the installations stored in the archive.

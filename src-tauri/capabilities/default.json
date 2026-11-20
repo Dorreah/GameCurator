@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window. JavaScript may only use core IPC and events; file dialogs and opening files are done by Rust commands that validate every path.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Main window, PDF viewers, the music player and the journal offer after playing. JavaScript may only use core IPC and events; file dialogs and opening files are done by Rust commands that validate every path.",
+  "windows": [
+    "main",
+    "player",
+    "pdf-*",
+    "journal-offer"
+  ],
+  "permissions": [
+    "core:default"
+  ]
 }

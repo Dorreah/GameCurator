@@ -20,8 +20,9 @@ skript odmítne.
    potřeba: frontend (čisté HTML/CSS/JS v `ui/`) se vloží do exe při
    kompilaci.
 
-3. Portable balíček = složka `GAME_CURATOR` s `GameCurator.exe`
-   a `README.txt` (z `portable\`). Složky `Data`, `Games` a soubor
+3. Portable balíček = složka `GAME_CURATOR` s `GameCurator.exe`,
+   `README.txt` (z `portable\`) a složkou `Licenses` (licence písem
+   a pdf.js; viz `tools/package.sh`). Složky `Data`, `Games` a soubor
    `.gamecurator-id` si aplikace vytvoří sama.
 
 Vývoj na Windows:
@@ -46,7 +47,8 @@ Změny v `ui/` se projeví po novém `cargo build` (soubory se vkládají do exe
 * WebView2 spouštěný bez síťových služeb na pozadí, synchronizace a velké
   diskové cache (méně paměti, CPU a zápisů na USB disk).
 
-Výsledek (cross-build MinGW): **5,4 MB** místo předchozích 6,8 MB.
+Výsledek (cross-build MinGW): **5,4 MB** místo předchozích 6,8 MB; s pozdějšími funkcemi
+(pixelová písma, ikony, čtečka PDF s pdf.js ~1,1 MB) dnes **7,2 MB**.
 
 ## Cross-build z Linuxu (MinGW-w64)
 
@@ -78,7 +80,7 @@ importuje jen `WebView2Loader.dll` (ověřeno přes `objdump -p`).
 ## Testy
 
 ```bash
-cargo test -p curator-core              # 18 unit + 20 integračních testů (libovolný OS)
+cargo test -p curator-core              # 22 unit + 24 integračních testů (libovolný OS)
 cargo test -p curator-core --release t8 -- --nocapture   # výkon jádra (500 her)
 ```
 
@@ -95,7 +97,8 @@ UI to ve stavovém řádku označí „test build“).
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev librsvg2-dev libssl-dev \
-                 xvfb webkit2gtk-driver
+                 xvfb webkit2gtk-driver xdotool ffmpeg gstreamer1.0-plugins-good
+# ffmpeg vyrobí testovací MP3/FLAC, GStreamer je přehraje, xdotool zavírá okna jako tlačítko ✕
 cargo install tauri-driver --locked
 pip install selenium pillow
 cargo build --release -p game-curator --features e2e
@@ -112,3 +115,14 @@ python3 tests/e2e/run_e2e.py target/release/GameCurator /tmp/e2e-out
 * `tools/make_icons.py src-tauri/icons` – ikony (Pillow)
 * `tools/make_matrix_rain.py ui/img/matrix-rain.svg` – statická textura
   „digitálního deště“ pro vzhled Matrix Terminal
+* `tools/make_fonts.py tools/fonts-src ui/fonts` – webová písma (WOFF2):
+  Pixel Operator pro Classic (CC0, s doplněnými symboly rozhraní), PxPlus IBM
+  VGA8 pro DOS Midnight (CC BY-SA 4.0, jen převod formátu) a malé písmo
+  `GC VGA Symbols` se symboly na mřížce 8×16 (fonttools + brotli). Výsledné
+  soubory jsou v repozitáři, takže se skript spouští jen při změně písma.
+* `tools/vendor_pdfjs.sh <rozbalený balíček pdfjs-dist>` – zkopíruje do
+  `ui/vendor/pdfjs` části pdf.js, které potřebuje čtečka PDF („legacy“ build
+  knihovny a workeru, standardní písma, WASM dekodéry obrázků, ICC profil,
+  licence). Balíček: `npm pack pdfjs-dist@6.5.438` a rozbalit. Výsledek je
+  v repozitáři (~3,6 MB, v exe komprimovaný), skript se spouští jen při
+  aktualizaci pdf.js. Sandbox pro skripty v PDF (QuickJS) se záměrně nekopíruje.

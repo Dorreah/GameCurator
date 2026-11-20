@@ -7,7 +7,8 @@
    běžely proti stejnému kódu na Linuxu (WebKitGTK místo WebView2). Kód
    specifický pro Windows se zkompiloval, ale v reálném Windows neběžel:
    `ShellExecuteW` (Open/Run, UAC u instalátorů), `GetDriveTypeW`,
-   `MessageBoxW`, profil WebView2 v `Data\WebView`. Pokus o spuštění pod Wine
+   `MessageBoxW`, profil WebView2 v `Data\WebView`, další okna (čtečka PDF,
+   přehrávač) se stejným profilem WebView2. Pokus o spuštění pod Wine
    selhal už při inicializaci samotného Wine (`wineboot` padá v testovacím
    virtuálu, s aplikací to nesouvisí). U exe je tedy ověřena jen jeho
    struktura: PE32+ GUI x86-64, importuje pouze systémové DLL
@@ -62,6 +63,38 @@
 * **Dodatečné soubory**: kopírování velkého souboru nemá ukazatel průběhu
   (jen „Copying…“). Odkaz mimo archiv je absolutní cesta, na jiném počítači
   proto soubor bývá „not found“ – záznam se tím nemaže.
+* **Ikony her v zobrazení Catalog** se berou z `goggame-*.ico` ve složce
+  instalace (GOG), jinak z ikony spouštěného `.exe`. Hra bez obojího (nebo
+  s neznámým programem) ikonu nemá. Ikona se načte jednou a pamatuje se;
+  když se změní, obnoví ji „Locate…“. Čtení ikon z `.exe` je ověřené na
+  uměle sestavených programech a na sestaveném `GameCurator.exe`, ne na
+  sbírce skutečných her.
+* **Nabídka zápisu po dohrání** funguje jen pro hry spuštěné tlačítkem
+  ▶ Play a jen dokud je Game Curator otevřený. Konec hry se pozná podle
+  toho, že už neběží žádný program ze složky instalace; hra spuštěná přes
+  program mimo složku (např. samostatně nainstalovaný ScummVM nebo DOSBox)
+  se sleduje jen přes první spuštěný proces. Hra, která běžela kratší dobu
+  než 15 s (pád při startu, zavřený launcher), nabídku nevyvolá. Program
+  ze složky instalace, který po hře zůstane běžet (např. pomocník nebo
+  nástroj otevřený zvlášť), konec hry oddálí, dokud neskončí. Okno nabídky
+  je vždy navrchu; nad hrou v exkluzivním režimu celé obrazovky se ukázat
+  nemůže, ale to už hra skončila. Chování na skutečném Windows zatím není
+  ověřené (testováno na Linuxu s launcherem, který hned skončí, a programem
+  ve složce instalace).
+* **Písmo Dogica** nemá české znaky s háčkem a kroužkem (ě š č ř ž ů …):
+  doplňuje je Pixel Operator 8 na stejné 8px mřížce, takže se mírně liší
+  tvarem. Text v Dogice je malý (8 px); ostrý je při měřítku 100 % a 200 %.
+  Geist Pixel nemá tučný řez (zvýraznění dělá barva).
+* **Přejmenování souborů** mění jen název v katalogu Game Curatoru; soubor
+  na disku (a v Průzkumníku) má dál původní název.
+* **Pixelová písma vzhledů Classic a DOS Midnight** jsou dokonale ostrá při měřítku displeje
+  Windows 100 % a 200 % (jeden pixel písma = 1 nebo 2×2 pixely obrazovky).
+  Při 125 % a 150 % připadá na pixel písma 1,25 nebo 1,5 pixelu obrazovky,
+  takže některé tahy vyjdou o pixel širší a hrany jsou lehce měkčí – text
+  zůstává dobře čitelný. Kdo chce ostré písmo i při takovém měřítku, může
+  zvolit Amber nebo Matrix. Pixelová písma nemají kurzívu ani (VGA) tučný řez:
+  zvýraznění se zobrazí barvou. V DOS Midnight má veškerý text jednu velikost
+  (16 px), jako skutečný textový režim.
 
 * **Detekce nainstalovaných her** hledá jen v záznamech GOG a v seznamu
   programů Windows. Hry nainstalované bez instalátoru (rozbalené ZIP,
@@ -94,6 +127,20 @@
 12. Editor deníku používá `document.execCommand` (zastaralé API, ale ve
     WebView2 i WebKitu stále podporované). Formátování: odstavce, 2 úrovně
     nadpisů, odrážky, číslování, tučné, kurzíva, podtržení, citace.
+12a. **Čtečka PDF je na čtení, ne na práci s PDF.** Umí stránky, zoom
+    a listování; neumí vyhledávání v textu, výběr a kopírování textu,
+    obsah (záložky), odkazy, formuláře, tisk ani PDF chráněné heslem pro
+    otevření (nabídne „Open in default app“). JavaScript v PDF se záměrně
+    nespouští. Kreslí přes pdf.js, takže vzácně se nějaký neobvyklý PDF může
+    zobrazit jinak než v Acrobatu – pak pomůže „Open in default app“.
+12b. **Přehrávač načte celou stopu do paměti** (kvůli okamžitému přetáčení
+    i na pomalém disku). U běžných MP3/FLAC soundtracků jde o jednotky až
+    desítky MB; soubory nad 1 GB přehrávač odmítne. Které formáty přehraje,
+    určuje WebView2 (Chromium): MP3, AAC/M4A, OGG Vorbis/Opus, FLAC a WAV ano;
+    WMA, MIDI ani moduly (MOD/XM) ne – ty jdou přes „Open in default app“.
+    Přehrávání v testech ověřeno na WebKitGTK (GStreamer), na WebView2
+    neověřeno (bod 1). Hudba se neukládá do historie, není ekvalizér ani
+    přehrávání více her najednou (jeden přehrávač, nový soundtrack ho přepne).
 
 ## Provoz
 

@@ -25,6 +25,12 @@ pub struct AppState {
     /// so the UI never sends a file path of its own.
     pub picked: Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
     pub pick_counter: std::sync::atomic::AtomicU64,
+    /// Games started with Play that are still running (see `session`).
+    pub running_games: Mutex<std::collections::HashSet<i64>>,
+    /// Files shown in the PDF viewer and the music player (see `viewer`).
+    pub viewers: Mutex<crate::viewer::Viewers>,
+    /// Journal offers waiting to be shown after games ended (see `offer`).
+    pub offers: Mutex<crate::offer::Offers>,
 }
 
 /// Locks a mutex even if a previous holder panicked (the data is still valid

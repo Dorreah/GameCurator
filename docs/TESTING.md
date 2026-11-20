@@ -1,13 +1,15 @@
 # Výsledky testování – Game Curator 0.1
 
-Datum: 19. 11. 2026 (večer) · prostředí: Ubuntu 24.04 (virtuální stroj, 2 vCPU,
+Datum: 20. 11. 2026 · prostředí: Ubuntu 24.04 (virtuální stroj, 2 vCPU,
 bez GPU), Rust 1.97, WebKitGTK 2.52 jako testovací harness · Windows build:
 cross-kompilace MinGW.
 
-Shrnutí: **39/39 automatických testů jádra a aplikace a 133/133 kontrol
+Shrnutí: **51/51 automatických testů jádra a aplikace a 186/186 kontrol
 end-to-end prošlo** (včetně převodu databáze z verze 0.1, výřezu obalu, dělicí čáry profilu,
-screenshotů, dodatečných souborů,
-nainstalovaných her, kontrol minimalismu a 12 kontrol vzhledů (4 vzhledy)). Testovala se skutečná aplikace (Rust backend + UI),
+screenshotů, dodatečných souborů, názvů souborů v katalogu, ikon
+nainstalovaných her, nabídky zápisu po dohrání, volby písma, **čtečky PDF
+a hudebního přehrávače** (skutečné PDF a MP3/FLAC soubory, okna zavírána
+stejně jako tlačítkem ✕), kontrol minimalismu a 14 kontrol vzhledů (4 vzhledy, včetně pixelových písem Classic a DOS Midnight)). Testovala se skutečná aplikace (Rust backend + UI),
 ne mock. Všechny testy jsou v repozitáři a lze je zopakovat (`docs/BUILD.md`).
 
 > ⚠️ **Na skutečném Windows aplikace nespuštěna** – viz
@@ -16,12 +18,14 @@ ne mock. Všechny testy jsou v repozitáři a lze je zopakovat (`docs/BUILD.md`)
 
 ## 1. Testy jádra (`cargo test -p curator-core`, `cargo test -p game-curator --features e2e`)
 
-18 unit testů (cesty s pravidly Windows, čištění názvů, vyhledávání bez
+22 unit testů (cesty s pravidly Windows, čištění názvů, vyhledávání bez
 diakritiky přes vlastní tabulku – čeština, němčina, polština, francouzština,
 rumunština, rozložené znaky, cyrilice –, kategorie souborů, odhad
 instalátoru, data, názvy záloh, párovací klíče nainstalovaných her, edice
-za pomlčkou, názvy z instalačních souborů, bezpečná jména kopií) + 1 test
-protokolu `gcimg` + 20 integračních testů (`crates/curator-core/tests/acceptance.rs`):
+za pomlčkou, názvy z instalačních souborů, bezpečná jména kopií; typy PDF
+a hudby, přirozené řazení stop, názvy stop, čtení po částech) + 1 test
+protokolu `gcimg` + 3 testy sledování hry (`session.rs`) + 1 test tokenů
+čtečky a přehrávače (`viewer.rs`) + 24 integračních testů (`crates/curator-core/tests/acceptance.rs`):
 
 | Test | Ověřuje |
 |---|---|
@@ -41,6 +45,12 @@ protokolu `gcimg` + 20 integračních testů (`crates/curator-core/tests/accepta
 | `artwork_crop_is_rendered_and_can_be_changed` | široký obrázek (vlevo červená, vpravo modrá): výchozí výřez na střed = obě barvy; výřez zvolený při přidání = jen červená, první náhled smazán; úprava v profilu = jen modrá; „celý obrázek“ = tmavé pruhy nahoře a dole; úprava hry bez obrázku výřez zachová; neplatné výřezy (NaN, mimo obrázek, nulová šířka) odmítnuty; hra bez obrázku nemá co upravit |
 | `screenshots_gallery_and_journal` | PNG → WebP kopie + náhled 480×270, originál nezměněn (bajt po bajtu), 5000 px zmenšeno na 3840, neobrázek odmítnut, nejnovější první, popisek (čištění, max. 500 znaků), připojení k zápisku (zobrazí se u zápisku i v jeho HTML kopii s relativním odkazem), jen k zápisku stejné hry, odpojení = zůstane v galerii, přesun zápisku k jiné hře vezme screenshot s sebou, smazání zápisku screenshot ponechá, smazání screenshotu smaže jen kopii, úklid při startu nikdy nesmaže obrázek, odebrání hry: ve výchozím stavu screenshoty zůstanou, na volbu se smažou |
 | `additional_files_are_copied_or_linked` | kopie do `Data/Additions/game-<id>/` (shodný obsah, originál zůstává, volné jméno „(2)“), odkaz mimo archiv = absolutní cesta, uvnitř archivu = relativní (cestuje s diskem), duplicitní odkaz odmítnut, složka / neznámý druh / neexistující hra odmítnuty, řazení podle druhu, úprava poznámky, zmizelý odkazovaný soubor = „not found“, nic se nemaže, `.exe` = Run, odebrání: odkaz nikdy nesmaže soubor, kopie jen na požádání, odebrání hry s volbou smaže jen kopie |
+| `icons_are_read_from_programs_without_running_them` | uměle sestavený program (PE32 se sekcí `.rsrc`): z první skupiny ikon se vezme největší obrázek (PNG 32 px před bitmapou 16 px), samotná bitmapa (32bit + maska) se přečte také a zvětší po celých pixelech na 48 px; „program“ bez hlaviček PE, useknutý soubor nebo chybějící program = žádná ikona, žádná chyba; soubor programu je po čtení bajt po bajtu stejný |
+| `installed_games_get_cached_icons_for_the_catalog` | `goggame-*.ico` ve složce instalace má přednost, ikona se uloží jako `Data/Thumbnails/icon-*.webp` (48 px) a podruhé se už nečte; bez `.ico` se vezme ikona programu a stará kopie se smaže; jiný počítač nic nečte; nepoužité ikony uklidí `cleanup_orphans`, odebrání hry smaže její ikonu; instalace se nezmění |
+| `files_get_names_in_the_catalog_while_the_files_keep_theirs` | název v katalogu pro soubor v Archive (sloučené mezery, přežije nové načtení složky), prázdný nebo shodný se souborem = zpět název souboru, příliš dlouhý / řídicí znaky / cizí hra odmítnuty; u dodatečného souboru název + druh + poznámka v jedné úpravě, odmítnutá úprava nic nezmění; soubory na disku mají pořád původní názvy |
+| `manuals_and_soundtracks_open_in_game_curator_read_only` | PDF → čtečka, `.exe` nikdy; playlist hry: hudba ze složky v přirozeném pořadí („Track 2“ před „Track 10“), názvy z katalogu, za ní hudební dodatečné soubory (ZIP ne); chybějící stopa vynechána (záznam zůstává), podvržený záznam `../outside.mp3` se nikdy nepřehraje; čtení manuálu po částech, soubor beze změny (obsah i čas úpravy) |
+| `viewer::tests` (aplikace) | stejný soubor = stejný token, zavřené okno = token zapomenut, playlist drží tokeny svých stop, label okna podle cesty |
+| `session::tests` (aplikace, Linux) | program zkopírovaný do složky instalace se pozná jako běžící, jiná složka ani kořen disku se nepočítají; launcher, který hned skončí, a hra, která běží dál: čeká se na hru, ne na launcher, a **konec se pozná do 0,6 s**; hra, která se objeví až 300 ms po skončení launcheru, se počká; když se neobjeví nic, sledování skončí po době předání; spuštěný program samotný se také počká |
 | `installed_games_are_detected_per_computer` | GOG záznam s ™ v názvu a `goggame-*.info` (program + argumenty, úloha s `..\` ignorována), záznam Windows s programem z `DisplayIcon`; „Gothic II“ ≠ „Gothic“, „Mafia: …“ ≠ „Mafia“, chybějící složka = nenalezeno; jiný počítač nic nevidí; ruční „Locate…“ (ne-.exe odmítnuto); po odinstalaci zmizí automatický záznam, ruční zůstane; chybějící program → srozumitelná chyba, nic se nemaže; „Forget“; odebrání hry smaže i záznamy instalací, soubory zůstanou |
 | `backups_auto_prune_and_restore` | auto záloha max 1×/24 h, rotace, ruční zálohy se nemažou, obnova + bezpečnostní záloha, vadná záloha nic nezmění |
 | `config_roundtrip_and_corruption` | uložení/načtení včetně vzhledu, starší `config.json` bez vzhledu → Classic, zrušené volby (úvodní obrazovka, řazení podle vývojáře) neresetují zbytek nastavení, neplatný vzhled odmítnut, šířka levého sloupce profilu (výchozí 42,5 %, oříznutí na 25–75 %), poškozený soubor → výchozí + `.bad` kopie |
@@ -52,7 +62,10 @@ Skutečná aplikace (release build s featurou `e2e`) ovládaná přes WebDriver
 (tauri-driver + WebKitWebDriver) pod Xvfb. Nativní dialogy nahrazuje soubor
 s cestou, Open/Run/Play se zapisují do logu místo spuštění, seznam
 nainstalovaných programů a název počítače přichází ze souboru (`GC_E2E_INSTALLED`,
-`GC_E2E_MACHINE`). **133/133 OK.**
+`GC_E2E_MACHINE`). Testovací PDF (3 strany, text ve standardním písmu,
+Letter i A4) a hudba (MP3 a FLAC, sinusový tón z ffmpeg) jsou skutečné
+soubory; okna čtečky a přehrávače se zavírají zprávou WM_DELETE_WINDOW
+(xdotool + Xlib) – stejně jako tlačítkem ✕. **186/186 OK.**
 
 **Relace 0 – databáze z verze 0.1**
 archiv s databází schématu 1 (hra „Completed“, hodnocení 5, oblíbená,
@@ -75,9 +88,21 @@ náhled nahrazen ·
 profil (hra, archiv, „What I know about this game“, deník) · soubory
 seskupené podle druhu (Installers, Installer data, Manuals, Music, Archives…)
 se souhrnem „6 files · … 1 manual …“ · žádné ovládání stavu, hodnocení ani
-oblíbených · předvybraný hlavní instalátor · **Open PDF** → otevřeno · **Open Folder**
+oblíbených · předvybraný hlavní instalátor · **čtečka PDF**: nápověda u Open („Read in
+the Game Curator viewer“) → Open u `Manual.pdf` otevře okno čtečky
+(nic se nespouští mimo aplikaci), titulek „Manual — System Shock 2“,
+strana 1 vykreslená s textem i obrázkem (pdf.js, písmo z aplikace), „3 pages“,
+na šířku okna · další strana, číslo strany + Enter, zoom 200 % (strana
+Letter přesně 1632 px, strana A4 si drží vlastní rozměr) · „Open in
+default app“ předá PDF Windows · stejný manuál podruhé = žádné druhé
+okno · **přehrávač**: Open u `01 - Main Theme.mp3` otevře okno přehrávače
+se soundtrackem hry ve správném pořadí, začne touto stopou, MP3 se
+dekóduje (0:04) a hraje · pauza, další stopa (FLAC), opakování, „Open in
+default app“ · Open u jiné stopy přepne tentýž přehrávač · **Open Folder**
 soundtracku → otevřeno · **Run EXE** → nejdřív potvrzovací dialog, spuštění
-až po potvrzení · vlastní kategorie uložena · úprava popisu · přidání štítku
+až po potvrzení · vlastní kategorie uložena · **název v katalogu**: tužka u
+„Manual.pdf“ → okno „Name in the catalog“ → nový název v seznamu, na disku
+pořád `Manual.pdf` (je v nápovědě), „Use the file name“ ho vrátí · úprava popisu · přidání štítku
 (stávající zachovány) · „What I know about this game“ · zápisek s nadpisem, odstavcem
 a seznamem, datum = dnešek · úprava zápisku · HTML kopie v `Data/Journals` ·
 **skener**: 4 hry nalezeny, složka Docs ignorována, názvy očištěné · import
@@ -94,12 +119,24 @@ otevře její profil · **About**: hlavní myšlenka, motto, verze, umístění 
 archivu, zvýrazněná položka menu · Settings už údaje z About neduplikují ·
 **nainstalované hry**: „Look for installed games again“ najde Disco Elysium
 podle GOG záznamu „Disco Elysium - The Final Cut“ (7-Zip ignorován) ·
-zaškrtávátko na všech kartách, zaškrtnuté jen u nainstalované hry · sloupec
-v katalogu · profil ukazuje složku instalace · **Play** je v rámečku
+zaškrtávátko na všech kartách, zaškrtnuté jen u nainstalované hry · Classic:
+názvy nenainstalovaných her oranžové, nainstalované zelené (karta i profil) ·
+sloupec v katalogu · **ikona** nainstalované hry v katalogu mezi sloupcem
+instalace a názvem, zarovnaná, načtená z `goggame-*.ico` (kopie v
+`Data/Thumbnails`, soubor v instalaci beze změny) · profil cestu k instalaci
+nevypisuje (je v nápovědě, „Show location“ zůstává) · **Play** je v rámečku
 „Installed on this PC“ (ne v hlavičce) → nejdřív dialog
 „Start game?“, spuštění programu z `goggame-*.info` až po potvrzení ·
 „Show location“ otevře složku instalace · nenalezená hra: „Not installed“,
-bez Play → „Locate…“ → program vybrán, Play k dispozici · **dělicí čára
+bez Play → „Locate…“ → program vybrán, Play k dispozici („set by you“
+v nápovědě) · **po dohrání**: Play spustí zástupnou „hru“ (launcher, který
+hned skončí, a program ze složky instalace, který běží 2 s) → během hry
+„● Running“ (nelze spustit podruhé) → po konci **do 2 s** samostatné okno
+„Back from the game“ (měřeno od zapsaného konce zástupné hry do vzniku
+okna), **vždy navrchu** (`_NET_WM_STATE_ABOVE`), s názvem hry, bez
+herního času, s „Don't show this again“ → „Write entry“ okno zavře a
+v hlavním okně otevře nový zápisek v profilu hry · „Don't show this
+again“ uloží `journalPrompt: false` a další konec hry už nic nenabídne · **dělicí čára
 profilu**: tažením rozšířen levý sloupec, šířka uložena do `config.json`
 a platí i v dalším profilu, šipky ji posunou, dvojklik vrátí výchozí ·
 About zmiňuje DRM-free disky, vlastní tempo a „Gaming history deserves
@@ -112,17 +149,30 @@ zápisku (i v HTML kopii) a je i v galerii hry · z náhledu u zápisku se
 galerie otevře s informací o zápisku · **dodatečné soubory**: panel pod
 Archive s vysvětlením · soubor mimo archiv se ve výchozím stavu kopíruje
 (obsah shodný, originál zůstává) · velký soubor jen odkázán (nic se
-nekopíruje) · řazení fix → patch → bonus · `.exe` patch: Run až po
+nekopíruje) · řazení fix → patch → bonus · tužka u patche → nový název
+v katalogu, soubor na disku beze změny · `.exe` patch: Run až po
 potvrzení · Open a Folder · odebrání kopie se smazáním, odkazovaný soubor
 se nikdy nesmaže · **drag & drop**: obrázek přetažený na Screenshots se
 přidá, složka odmítnuta, puštění mimo cílovou plochu jen s nápovědou ·
 tažení nad panelem ho zvýrazní s popiskem · dva soubory přetažené na
 Additional files = jeden dialog pro oba · odebrání
 hry: dialog uvádí, že složka nebude smazána → složka a soubory zůstaly ·
-ruční záloha DB · **vzhledy**: 4 volby v Settings, výchozí Classic,
+ruční záloha DB · **vzhledy**: 4 volby v Settings, výchozí Classic
+s pixelovým písmem Pixel Operator (načteno z aplikace, regular i Pixel
+Operator 8 – žádná náhrada systémovým písmem), text světle šedý (ne bílý),
+**volba písma**: 4 vzorky ve vlastním písmu, Dogica (8 px), Geist Pixel
+a Roboto Slab (14 px) se okamžitě použijí, načtou z aplikace a uloží do
+`config.json`, návrat na Pixel Operator · nabídku zápisu po dohrání lze
+v Settings znovu zapnout · Settings > Manuals & music: zapnuto ve výchozím
+stavu, po vypnutí Open předá PDF výchozímu programu (žádné okno čtečky),
+pak znovu zapnuto ·
 Amber, Matrix i DOS Midnight se okamžitě použijí a uloží do `config.json`, ovládací prvky
 jsou ve všech vzhledech identické (porovnání všech tlačítek, polí a výběrů),
-monospace písmo, screenshoty knihovny, profilu, dialogu, deníku a skeneru.
+monospace písmo (pixelové písmo Classic do nich neproniká), DOS Midnight
+s písmem IBM VGA (PxPlus IBM VGA8 načteno, text v nativních 16 px),
+screenshoty knihovny, profilu, dialogu, deníku a skeneru; v Matrix a DOS
+Midnight i okno přehrávače a čtečky · **zavření hlavního okna** (jako
+tlačítkem ✕) zavře i otevřený přehrávač a aplikace skončí.
 
 **Relace 2 – přesun archivu / změna písmene jednotky (testy 1, 2, 5)**
 celá „jednotka“ D přejmenována na E a spuštěno jako **jiný počítač** (jiný
@@ -152,28 +202,33 @@ Release build. Linux/WebKitGTK, softwarové vykreslování bez GPU.
 
 | Měření | Hodnota |
 |---|---|
-| Velikost aplikace | Windows `GameCurator.exe` **5,7 MB** (+ `WebView2Loader.dll` 160 kB u MinGW buildu) |
-| Start aplikace → zobrazeno 500 karet s obaly (vč. zjištění nainstalovaných her) | **0,8 s** (DOM připraven → karty: ~0,6 s) |
-| Sken 500 složek (UI, vč. vyhodnocení) | 0,6 s |
-| Import 500 her přes skener (vč. indexace souborů, `synchronous=FULL`) | 2,6 s |
-| Vyhledávání nad 500 hrami (vstup → překreslení, **včetně 140ms debounce**) | **~150 ms**, samotný SQL dotaz 0,14 ms |
-| Přepnutí Grid → Catalog (500 řádků) | ~170 ms |
-| Scrollování mřížkou 500 karet, Classic, 1. průchod (dekódování obalů) | **29 fps** |
-| Scrollování, Classic, 2. průchod | **35 fps** |
+| Velikost aplikace | Windows `GameCurator.exe` **7,2 MB** (+ `WebView2Loader.dll` 160 kB u MinGW buildu; z toho ~1,1 MB pdf.js pro čtečku PDF) |
+| Čtečka PDF: klik na Open → okno otevřené a první strana vykreslená | **1,2 s** (vč. vytvoření okna a WebView; softwarové vykreslování) |
+| Konec hry → okno nabídky zápisu do deníku | **1,3 s** (0,75 s ověření konce + vytvoření okna a WebView) |
+| Start aplikace → zobrazeno 500 karet s obaly (vč. zjištění nainstalovaných her a jejich ikon) | **0,8–1,4 s** (běhy po sobě; virtuální stroj kolísá) |
+| Sken 500 složek (UI, vč. vyhodnocení) | 0,4 s |
+| Import 500 her přes skener (vč. indexace souborů, `synchronous=FULL`) | 2,7 s |
+| Vyhledávání nad 500 hrami (vstup → překreslení, **včetně 140ms debounce**) | **~153 ms**, samotný SQL dotaz 0,14 ms |
+| Přepnutí Grid → Catalog (500 řádků, se sloupcem ikon) | ~210 ms |
+| Scrollování mřížkou 500 karet, Classic (VGA, pixelové písmo), 1. průchod (dekódování obalů) | **30 fps** |
+| Scrollování, Classic, 2. průchod | **36 fps** |
 | Scrollování, Terminal CRT Amber | **25 fps** |
 | Scrollování, Matrix Terminal | **23 fps** |
-| Scrollování, DOS Midnight (bez scanlines) | **32 fps** |
-| Lazy loading obalů | po startu načteno 18 z 500; zbytek až při scrollu |
+| Scrollování, DOS Midnight (písmo IBM VGA, bez scanlines) | **32 fps** |
+| Lazy loading obalů | po startu načteno 15 z 500; zbytek až při scrollu |
 | Dotazy jádra (`cargo test --release t8`) | výpis 500 her vč. počtu a velikosti souborů 0,51 ms · hledání 0,15 ms · řazení podle velikosti 0,63 ms · počty 0,19 ms · kontrola dostupnosti 500 složek 1,3 ms · sken 500 složek 5 ms |
-| RAM v klidu, 3 hry | proces aplikace 165 MB, celkem s WebKit procesy 388 MB |
-| RAM v klidu po startu, 500 her | 166 MB / 404 MB |
-| RAM po proscrollování všech 500 obalů (a přepnutí všech vzhledů) | 171 MB / 564 MB |
+| RAM v klidu, 3 hry | proces aplikace 167 MB, celkem s WebKit procesy 393 MB |
+| RAM v klidu po startu, 500 her | 167 MB / 407 MB |
+| RAM po proscrollování všech 500 obalů (a přepnutí všech vzhledů) | 171 MB / 582 MB |
 | Procesy po zavření | 0 |
 
 Čísla scrollování kolísají mezi běhy a mezi instancemi testovacího virtuálu
 (jen 2 jádra, bez GPU, softwarové vykreslování): mřížka knihovny se v
 posledních kolech neměnila, a přesto vycházela Classic 29–57 fps, Amber
-24–44, Matrix 23–35. Výše je poslední běh. Rozhodující bude měření na
+24–44, Matrix 23–35. Výše je poslední běh. Nový vzhled Classic (pixelové
+písmo, 2px zkosení a černý obrys karet) scrolluje stejně rychle jako
+předchozí verze – stíny jsou ostré (bez rozmazání) a „zvednutí“ karty při
+najetí myší se týká jen jedné karty. Rozhodující bude měření na
 Windows s GPU.
 
 **Jak číst čísla o paměti:** tvoří je téměř celá WebKitGTK v tomto
@@ -210,7 +265,12 @@ procesový model a čísla tam budou jiná. Je potřeba je změřit na Windows
 * skutečné spuštění instalátoru, hry a UAC (v E2E se jen zapíše do logu),
 * skutečné čtení registru Windows (v E2E se seznam programů načte ze souboru;
   kód pro registr je jen přeložený a typově zkontrolovaný),
-* fyzické odpojení USB disku (simulováno přejmenováním složek).
+* fyzické odpojení USB disku (simulováno přejmenováním složek),
+* okno nabídky zápisu „vždy navrchu“ nad jiným programem: Xvfb bez správce
+  oken žádné okno nad jiným nedrží, takže to tu ověřit nejde (testuje se, že
+  okno vznikne do 2 s od konce hry a funguje),
+* čtečka PDF a přehrávač ve WebView2 (testováno ve WebKitGTK s GStreamerem),
+  velké skenované manuály (stovky MB) a multimediální klávesy Windows.
 
 ## 5. Kontrolní seznam pro první test na Windows
 
@@ -238,3 +298,14 @@ procesový model a čísla tam budou jiná. Je potřeba je změřit na Windows
    ukažte přes Locate…
 9. Výřez obalu: vyberte široký obrázek (např. 16:9), posuňte ho a přibližte,
    uložte; v profilu Adjust → Fit → Save.
+10. Čtečka PDF: otevřete skutečný manuál z GOG (ideálně velký skenovaný
+    PDF) – první strana by měla být vidět hned, listování plynulé, zoom
+    ostrý; zkuste PageDown, Ctrl+kolečko a „Open in default app“. Ve
+    Správci úloh ověřte, že po zavření okna paměť klesne.
+11. Přehrávač: Open u MP3 ze soundtracku → hraje, přetáčení, další stopa,
+    hlasitost; multimediální klávesy (play/pause, další) a ovládání médií
+    Windows (ikona hlasitosti). Zkuste i FLAC a OGG. Zavřete hlavní okno
+    → přehrávač se zavře s ním a nezůstane žádný proces.
+12. Nabídka po dohrání: spusťte hru přes ▶ Play, chvíli hrajte (aspoň 15 s),
+    přepněte (Alt+Tab) do jiného programu a hru ukončete – okno „Back from
+    the game“ se má do sekundy ukázat navrchu, aniž by vám vzalo klávesnici.

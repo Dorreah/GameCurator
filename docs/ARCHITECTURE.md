@@ -10,10 +10,13 @@ aplikace slouží výhradně jako testovací harness (`--features e2e`).
 ┌───────────────────────────────────────────────────────────────┐
 │ ui/  (HTML + CSS + vanilla JavaScript, ES moduly, bez frameworku)│
 │   app.js  router, stavový řádek, klávesové zkratky               │
-│   css/retro.css (Classic) + css/themes.css (Amber, Matrix, DOS)  │
+│   css/retro.css (základ) + classic.css + themes.css (Amber,     │
+│   Matrix, DOS); fonts/ pixelové písmo Pixel Operator (CC0)      │
 │   library / profile / journal / scanner / settings / about /    │
 │   wizard; levé menu s ikonami je jediná navigace (bez top baru) │
 │   api.js  jediné místo, které volá Tauri IPC                    │
+│   viewer.html + viewer.js  čtečka PDF (pdf.js, ui/vendor/pdfjs) │
+│   player.html + player.js  hudební přehrávač soundtracku        │
 └──────────────────────────────┬────────────────────────────────┘
                                │ invoke() + události (scan-progress…)
 ┌──────────────────────────────▼────────────────────────────────┐
@@ -24,6 +27,8 @@ aplikace slouží výhradně jako testovací harness (`--features e2e`).
 │                čtení registru (GOG, Uninstall) – jen čtení       │
 │   protocol.rs  gcimg:// – servíruje obaly jen z Data/Artwork,    │
 │                Data/Thumbnails                                   │
+│   viewer.rs    okna čtečky PDF a přehrávače, tokeny souborů,     │
+│                čtení po částech (media_read)                     │
 │   state.rs     sdílený stav (Mutex<Database>, config, sken)      │
 │   lib.rs       start: archiv → WebView2 → DB → úklid → okno      │
 └──────────────────────────────┬────────────────────────────────┘
@@ -37,8 +42,10 @@ aplikace slouží výhradně jako testovací harness (`--features e2e`).
 │   files.rs    obsah herní složky, kategorie, hlavní instalátor   │
 │   journal.rs  herní deník + HTML kopie v Data/Journals           │
 │   installs.rs nainstalované hry: párování, záznamy pro každé PC   │
+│   icons.rs    ikony nainstalovaných her (jen čtení .ico / .exe)  │
 │   screenshots.rs screenshoty (galerie, vazba na zápisek deníku)  │
 │   additions.rs   dodatečné soubory: kopie do archivu / odkaz     │
+│   media.rs    PDF/hudba: typy, playlist hry, čtení po částech     │
 │   scanner.rs  hledání kandidátů, zrušení, import bez duplicit    │
 │   images.rs   JPG/PNG/WebP → WebP obal + náhled 360×480 z výřezu │
 │   backup.rs   VACUUM INTO zálohy, ověření, rotace, obnova        │
@@ -135,6 +142,63 @@ zapíše nový soubor (žádná stará verze v cache WebView) a starý smaže.
   i kopie ve `Data/` ve výchozím stavu zachované; smažou se jen na výslovnou
   volbu v potvrzovacím okně.
 
+## Názvy souborů v katalogu
+
+* Tužka ✎ u souboru v Archive (vedle Open/Run) a u dodatečného souboru dává
+  souboru **název v katalogu** (`files.display_name`, `additions.display_name`).
+  Soubor na disku se nikdy nepřejmenuje – platí pravidlo „hra se nemění“;
+  skutečný název je v nápovědě (tooltip) a v okně úprav.
+* `text::display_name`: ořízne a sloučí mezery, max. 120 znaků, žádné řídicí
+  znaky; prázdný název nebo název shodný se souborem znamená „zobraz název
+  souboru“ (`NULL`). Název přežije každé nové načtení složky (synchronizace
+  `files` používá `ON CONFLICT … DO UPDATE` jen pro údaje ze složky).
+
+## Čtečka PDF a hudební přehrávač
+
+* **Open** u PDF (soubor v Archive i dodatečný soubor) otevře okno čtečky,
+  u hudby (mp3, ogg/oga/opus, flac, wav, m4a, aac) okno přehrávače se
+  soundtrackem hry. Rozhoduje Rust (`commands::open_file` / `open_addition`
+  → `viewer::open_archive_file` / `open_addition_file`); vypnout to lze v
+  Settings > Manuals & music (`config.builtinViewer`), pak jde vše do
+  výchozích programů Windows jako dřív. Obě okna mají „Open in default app“.
+* Okna jsou stránky aplikace (`viewer.html`, `player.html`) vytvořené
+  z kódu (`WebviewWindowBuilder`) se **stejným profilem WebView2**
+  (`Data/WebView`, stejné přepínače) jako hlavní okno – nic nejde do
+  AppData. Čtečka má label `pdf-<hash cesty>` (stejný soubor podruhé =
+  stejné okno do popředí), přehrávač je jeden (`player`; nový soundtrack ho
+  přepne událostí `gc-player-load`). Zavřením hlavního okna se zavřou i ona.
+* Stránka nikdy nedostane cestu: Rust zaregistruje soubor vyřešený
+  z katalogu pod **token** (`viewer::Viewers`) a stránka čte bajty přes
+  `media_read(token, offset, length)` (max. 16 MB naráz, vrací surový
+  ArrayBuffer). Čtečka zjistí svůj dokument podle labelu okna
+  (`viewer_document`), přehrávač si vyžádá playlist (`player_state`).
+  Tokeny zaniknou se zavřením okna. Vše jen čte.
+* **pdf.js** (pdfjs-dist 6.5.438, „legacy“ build s polyfilly, Apache 2.0)
+  je přibalený v `ui/vendor/pdfjs/` (`tools/vendor_pdfjs.sh`): knihovna,
+  worker, standardní písma, dekodéry JPEG 2000 / JBIG2 / ICC (WASM +
+  JS záloha). Bez sandboxu skriptů – JavaScript v PDF se nikdy nespouští,
+  `isEvalSupported: false`, žádné XFA ani formuláře. Dokument se načítá
+  po rozsazích (`PDFDataRangeTransport`, bloky 512 kB), takže první strana
+  velkého skenovaného manuálu je vidět hned. Stránky se kreslí na canvas
+  podle toho, co je vidět (+ sousední), drží se nejvýš 12 vykreslených,
+  ostrost podle `devicePixelRatio`, limit 16 Mpx na canvas. Zoom: na šířku,
+  celá strana, 25–400 %, Ctrl+kolečko, Ctrl ±/0; PageUp/PageDown, Ctrl+G.
+* **Přehrávač** načte stopu přes `media_read` do paměti (Blob) a přehrává
+  z ní, takže přetáčení je okamžité i na pomalém USB disku. Playlist =
+  hudební soubory ze složky hry (přirozené řazení, „Track 2“ před
+  „Track 10“; chybějící soubory a záznamy mimo složku vynechá) + hudební
+  dodatečné soubory; názvy z katalogu. Ovládání: play/pause, předchozí
+  (do 3 s od začátku stopy předchozí, jinak na začátek), další, posuvník,
+  hlasitost + ztlumení, opakování (vypnuto / vše / jedna stopa), mezerník
+  a šipky, Media Session (multimediální klávesy Windows). Hlasitost a
+  opakování si pamatuje v localStorage profilu WebView. WebView2 běží
+  s `--autoplay-policy=no-user-gesture-required`, aby stopa, kterou uživatel
+  otevřel v hlavním okně, začala hrát bez dalšího kliknutí v přehrávači.
+* CSP: `script-src 'self' 'wasm-unsafe-eval'` (WASM dekodéry pdf.js),
+  `connect-src 'self'` (písma a WASM z aplikace), `media-src 'self' blob:`,
+  `img-src … blob:`, `worker-src 'self'`; capability platí pro okna
+  `main`, `player` a `pdf-*`.
+
 ## Nainstalované hry
 
 * Aplikace při startu (a na tlačítko v Settings) přečte **jen pro čtení**
@@ -154,6 +218,45 @@ zapíše nový soubor (žádná stará verze v cache WebView) a starý smaže.
   každém startu obnoví, ruční („Locate…“) mění jen uživatel.
 * UI posílá jen id hry; cestu k programu bere Rust z databáze. Play vyžaduje
   potvrzení (dialog + `confirmed: true` na úrovni příkazu).
+* **Po dohrání** (`src-tauri/src/session.rs`): Play spouští hru přes
+  `ShellExecuteExW` s `SEE_MASK_NOCLOSEPROCESS`, takže má handle procesu.
+  Jedno vlákno na spuštěnou hru počká na tento proces a pak – protože mnoho
+  her startuje přes launcher, který hned skončí – 4× za sekundu zjišťuje,
+  zda běží nějaký program ze složky instalace (Toolhelp32 snímek; plnou
+  cestu programu přes `QueryFullProcessImageNameW` zjišťuje jen jednou pro
+  každý nový proces; jen čtení; nikdy kořen disku ani sdílené systémové
+  složky). Když 0,75 s neběží nic ze složky, hra skončila (krátká mezera
+  při restartu hry, např. po změně rozlišení, se za konec nepovažuje).
+  Jen když spuštěný program skončil do 20 s a nic dalšího ze složky
+  neběží (launcher předává hru se zpožděním), čeká se na hru až 8 s.
+  Pak událost `gc-game-stopped` (Play znovu dostupné, během hry
+  „● Running“) a, pokud hra běžela aspoň 15 s, **nabídka zápisu do deníku
+  zhruba do sekundy od konce hry** (`src-tauri/src/offer.rs`): malé okno
+  `journal-offer` (`offer.html`) uprostřed obrazovky, **vždy navrchu** –
+  je vidět, i když už je vpředu jiný program –, ale bez převzetí
+  klávesnice (`focused(false)`), s blikáním na liště. „Write entry“ okno
+  zavře, přenese hlavní okno dopředu a otevře nový zápisek v profilu hry
+  (událost `gc-journal-write`); „Not now“ / ✕ okno zavře; „Don't show
+  this again“ → `config.journalPrompt = false` (hlavní okno to hned ví:
+  `gc-config-changed`), zpět v Settings > Gaming Journal. Skončí-li víc
+  her, nabídnou se postupně. Kdyby se okno nepodařilo otevřít, nabídne se
+  dialog v hlavním okně. Herní čas se nikam neukládá ani
+  neukazuje. Sledují se jen hry spuštěné z Game Curatoru a jen dokud běží
+  Game Curator – po jeho zavření nic dál neběží. Na Linuxu (testy) se
+  programy čtou z `/proc/*/exe`.
+* Profil cestu k instalaci nevypisuje (méně textu na obrazovce): je
+  v nápovědě rámečku a „Show location“ otevře složku.
+* **Ikony** (`icons.rs`) pro zobrazení Catalog: při detekci (start, tlačítko
+  v Settings) a po „Locate…“ se pro nainstalované hry bez ikony přečte
+  `goggame-*.ico` ze složky instalace, jinak ikona ze spouštěného `.exe`.
+  Program se nespouští ani nemění: parser čte jen hlavičky PE a sekci
+  `.rsrc` (RT_GROUP_ICON → RT_ICON, první skupina = ikona, kterou ukazuje
+  Průzkumník), se striktní kontrolou mezí (max. 64 kB na hlavičky, 4 MB na
+  obrázek). Největší obrázek se zmenší (nebo malé 16/32 px zvětší po celých
+  pixelech) na 48 × 48 a uloží jako bezeztrátové WebP do
+  `Data/Thumbnails/icon-*.webp` (cesta v `games.icon_path`, zobrazuje se ve
+  24 px). Nečitelná ikona = hra prostě ikonu nemá. Nepoužité ikony uklidí
+  `cleanup_orphans`, odebrání hry smaže i její ikonu.
 
 ## Struktura repozitáře
 
@@ -163,7 +266,7 @@ game-curator/
 ├── .cargo/config.toml         linker pro cross-build na Windows (MinGW)
 ├── crates/curator-core/
 │   ├── src/*.rs               jádro (viz výše)
-│   ├── src/schema.sql         SQLite schéma (verze 4)
+│   ├── src/schema.sql         SQLite schéma (verze 5)
 │   └── tests/acceptance.rs    integrační testy = akceptační testy 1–8 na úrovni jádra
 ├── src-tauri/
 │   ├── Cargo.toml             binárka GameCurator, featura `e2e` jen pro testy
@@ -171,11 +274,19 @@ game-curator/
 │   ├── tauri.linux.conf.json  jen CSP pro testovací harness (WebKitGTK)
 │   ├── capabilities/          minimální oprávnění JS
 │   ├── icons/                 ikony (generuje tools/make_icons.py)
-│   └── src/                   lib.rs, commands.rs, system.rs, protocol.rs, state.rs
-├── ui/                        index.html, css/retro.css + themes.css, js/*.js, img/
+│   └── src/                   lib.rs, commands.rs, system.rs, protocol.rs, state.rs,
+│                              dragdrop.rs, session.rs (konec hry spuštěné přes Play),
+│                              viewer.rs (okna čtečky PDF a přehrávače)
+├── ui/                        index.html, viewer.html, player.html,
+│                              css/retro.css + classic.css + themes.css + media.css,
+│                              js/*.js, img/, vendor/pdfjs/ (pdf.js – Apache 2.0), fonts/ (Pixel Operator – CC0, PxPlus IBM
+│                              VGA8 – CC BY-SA 4.0, Dogica – OFL, Geist Pixel – OFL,
+│                              Roboto Slab – Apache 2.0, GC VGA / Pixel Symbols – CC0)
 ├── portable/README.txt        návod, který se přikládá k GameCurator.exe
 ├── tests/e2e/run_e2e.py       end-to-end testy přes WebDriver (tauri-driver)
-├── tools/                     build-windows.sh, package.sh, make_icons.py, make_matrix_rain.py
+├── tools/                     build-windows.sh, package.sh, make_icons.py, make_matrix_rain.py,
+│                              make_fonts.py + fonts-src/ (originální TTF a licence písma),
+│                              vendor_pdfjs.sh (kopie pdf.js do ui/vendor/pdfjs)
 └── docs/                      tato dokumentace
 ```
 
@@ -212,9 +323,61 @@ game-curator/
 * Výhradně CSS: `<html data-theme="classic|amber|matrix|dos">` (+ třída `term`
   pro textové vzhledy). HTML, JavaScript i ovládání jsou ve všech
   vzhledech stejné; E2E test to ověřuje porovnáním všech ovládacích prvků.
+* **Classic** (výchozí) je „VGA launcher“ – spouštěče a instalační programy
+  DOSových her z počátku 90. let ve fialové paletě archivu: pixelové písmo
+  **Pixel Operator** (Jayvee Enaguas, CC0), tlačítka a rámy s 2px zkosením
+  a černým obrysem, lišty s proužky (jako titulky oken té doby), ostré
+  stíny bez rozmazání, rozmítané (dithered) výplně posuvníků a překryvu,
+  pixelové zaškrtávací políčka a přepínače (malá SVG v CSS), pixel-art
+  ikona police (`ui/img/shelf-px.svg`) a krabice na místě chybějícího obalu
+  (`ui/img/box-px.svg`). `retro.css` drží rozvržení a základní paletu,
+  `classic.css` vše přestyluje a každé pravidlo má předponu
+  `html[data-theme="classic"]`, takže terminálové vzhledy zůstávají beze změny.
+  * Text je světle šedý (`--text: #c3bfcb`), ne bílý – menší kontrast.
+  * **Volba písma** (Settings > Appearance, `config.classicFont`, atribut
+    `html[data-classic-font]`): Pixel Operator (výchozí), Dogica, Geist Pixel,
+    Roboto Slab. Velikosti v `classic.css` jsou proměnné (`--fs`, `--lh`,
+    `--fs-title`, `--fs-small`, `--fs-big`, `--fs-mono`), takže každé písmo
+    má svou mřížku: Dogica je 8px písmo (text 8 px, nadpisy 16 px, české
+    znaky s háčky/kroužkem z Pixel Operator 8 na stejné mřížce, symboly
+    rozhraní z `GC Pixel Symbols 8`); Geist Pixel a Roboto Slab jsou hladké
+    ve 14 px. Logo zůstává vždy v Pixel Operator 8. Volbu ukládá i
+    `theme-boot.js` (localStorage), takže se použije před prvním vykreslením.
+    Licence: Dogica OFL 1.1 s rezervovanými názvy → soubory TTF beze změny;
+    Geist Pixel OFL 1.1 bez rezervovaného názvu → oříznutý na řez Regular
+    (3,6 MB → 26 kB WOFF2); Roboto Slab Apache 2.0 → WOFF2.
+  * Nadpisy, tučné písmo a názvy her jsou oranžové (`--heading`), názvy her
+    nainstalovaných na tomto PC zelené (`--installed`, třída `.game-title.inst`
+    na kartě, v katalogu, v profilu i v deníku), aby se odlišily od bílého
+    textu. Rám okna (lišty panelů, skupiny, záhlaví tabulek) zůstává fialový.
+  * Pixelové písmo je ostré jen v násobcích své mřížky: Pixel Operator
+    (a Bold, Mono) v 16 px, Pixel Operator 8 v 8, 16 nebo 24 px (titulky ve
+    dvojnásobku). Výšky řádků jsou celé sudé pixely (20 px), aby znaky
+    neležely na půlpixelech. Žádné jiné velikosti se v Classic nepoužívají.
+  * Písmo nemá kurzívu a `font-synthesis: none` vypíná umělou kurzívu
+    i tučnost; kurzíva v deníku se proto zobrazí fialovou barvou.
+  * Webová písma (`ui/fonts/*.woff2`, každé ~5 kB) generuje
+    `tools/make_fonts.py` z originálních TTF v `tools/fonts-src/`. Doplňuje
+    symboly, které písmo nemá a rozhraní používá (▶ ◄ ✕ ＋ ★ ✎ ← → ↻ …),
+    nakreslené přímo na jeho pixelové mřížce, aby nepadaly na systémové písmo.
+* **Barevné role terminálových vzhledů**: místo jedné barvy fosforu má každý
+  vzhled role `--t-fg` (běžný text a rámy), `--t-hi` (zvýraznění, varování),
+  `--t-strong` (tučné písmo, nadpisy), `--t-title` (názvy her), `--t-key`
+  (popisky tlačítek) a `--t-bar` / `--t-on-bar` (inverzní lišty, aktivní
+  položka menu, titulky oken). **Matrix**: tlumená zelená `#6cc48f` + bílá
+  (nadpisy) + žlutá `#eed27a` (názvy her, tlačítka). **Amber**: tlumená
+  jantarová `#e3a04a` + teplá bílá (nadpisy, tlačítka) + světle rudá
+  `#f2826f` (názvy her, zvýraznění). Lišty mají klidnější střední tón než
+  text, záře a scanlines jsou slabší – vzhledy tolik „neřežou do očí“.
+* **DOS Midnight** používá písmo IBM VGA – **PxPlus IBM VGA8** (VileR,
+  CC BY-SA 4.0), beze změny, jen převedené do WOFF2. Deset symbolů rozhraní,
+  které písmo nemá (▶ ✕ ＋ ★ ✎ ↻ …), kreslí samostatné malé písmo
+  `GC VGA Symbols` na stejné mřížce 8×16 (CSS ho uvádí hned za VGA písmem,
+  prohlížeč si z něj vezme jen chybějící znaky). Veškerý text je v nativních
+  16 px s řádky 20 px a bez prostrkání, jako v textovém režimu.
 * Terminálové vzhledy přemapují barevné proměnné klasického vzhledu na
-  paletu fosforu a přestylují komponenty: monospace písmo (Cascadia Mono /
-  Consolas), lišty v inverzním režimu, dvojité „box-drawing“ rámečky,
+  svou paletu a přestylují komponenty: monospace písmo (Cascadia Mono /
+  Consolas; DOS Midnight písmo IBM VGA), lišty v inverzním režimu, dvojité „box-drawing“ rámečky,
   `[TLAČÍTKA]`, statické scanlines, jemná záře. Matrix má navíc statickou
   texturu „digitálního deště“ (`ui/img/matrix-rain.svg`, ~32 kB, generuje
   `tools/make_matrix_rain.py`). **DOS Midnight** sdílí stejný základ, ale
@@ -257,7 +420,9 @@ backlog, a tyto údaje nenápadně tlačí hry dokončovat. Databáze z verze 1 
 při prvním otevření převede (`ALTER TABLE … DROP COLUMN` v jedné transakci).
 Předtím se vždy zapíše záloha `Data/Backups/library-*-pre-upgrade.db`,
 takže se nic neztratí. **Verze 3** přidala sloupec `games.cover_crop`
-a tabulku `installations`; **verze 4** tabulky `screenshots` a `additions`.
+a tabulku `installations`; **verze 4** tabulky `screenshots` a `additions`;
+**verze 5** sloupce `games.icon_path`, `files.display_name`
+a `additions.display_name`.
 Převod ze starší verze proběhne postupně v jedné transakci, opět se zálohou
 předem.
 
@@ -303,6 +468,9 @@ zrušení přes `AtomicBool` kontrolovaný u každé složky. Skener jen čte.
   vždy zobrazí potvrzovací dialog. Na Windows se používá `ShellExecuteW`
   s pracovní složkou instalátoru (UAC funguje normálně).
 * Protokol `gcimg://` vrací jen soubory z `Data/Artwork/` a `Data/Thumbnails/`.
+* Čtečka PDF a přehrávač čtou jen soubory, které Rust vyřešil z katalogu
+  (stejná kontrola „uvnitř složky hry“ jako Open) a zaregistroval pod
+  tokenem; stránka cestu nikdy nezná. JavaScript z PDF se nespouští.
 * Text deníku se ukládá jako HTML z whitelistu (p, h2, h3, ul, ol, li, b, i,
   u, blockquote) bez atributů; sanitizuje se při uložení i zobrazení. CSP
   zakazuje inline skripty.

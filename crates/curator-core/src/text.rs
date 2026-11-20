@@ -68,6 +68,27 @@ pub fn tidy(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Longest name the catalog shows instead of a file name.
+pub const MAX_DISPLAY_NAME: usize = 120;
+
+/// Cleans the name a file gets in the catalog (the file on disk keeps its
+/// own name). Empty, or the same as the file name, means "show the file
+/// name" and gives `None`.
+pub fn display_name(raw: &str, filename: &str) -> crate::Result<Option<String>> {
+    if raw.chars().any(|c| c.is_control() && !c.is_whitespace()) {
+        return Err(crate::CoreError::invalid("The name contains characters that cannot be shown."));
+    }
+    let name = tidy(raw);
+    if name.chars().count() > MAX_DISPLAY_NAME {
+        return Err(crate::CoreError::invalid(format!("The name is too long (maximum {MAX_DISPLAY_NAME} characters).")));
+    }
+    let own = filename.rsplit(['/', '\\']).next().unwrap_or(filename);
+    if name.is_empty() || name == filename || name == own {
+        return Ok(None);
+    }
+    Ok(Some(name))
+}
+
 fn looks_like_version(token: &str) -> bool {
     let t = token.trim_matches(|c: char| c == '(' || c == ')' || c == '[' || c == ']');
     if t.is_empty() {

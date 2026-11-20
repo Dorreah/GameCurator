@@ -43,7 +43,7 @@ pub fn classify(name: &str) -> &'static str {
         "bin" => "data",
         "pdf" => "manual",
         "jpg" | "jpeg" | "png" | "webp" => "image",
-        "mp3" | "flac" | "ogg" | "wav" => "music",
+        "mp3" | "flac" | "ogg" | "oga" | "opus" | "wav" | "m4a" | "aac" => "music",
         "zip" | "7z" | "rar" => "archive",
         "txt" | "md" => "text",
         _ => "other",
@@ -155,6 +155,8 @@ pub struct FileRecord {
     pub risky: bool,
     pub file_path: String,
     pub filename: String,
+    /// Name shown in the catalog instead of the path (the file keeps its name).
+    pub display_name: Option<String>,
     pub file_type: String,
     pub custom_category: Option<String>,
     pub category: String,
@@ -204,7 +206,7 @@ pub fn sync_files(conn: &mut Connection, game_id: i64, listing: &FolderListing) 
 
 pub fn file_records(conn: &Connection, game_id: i64) -> Result<Vec<FileRecord>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, file_path, filename, file_type, custom_category, is_primary, size_bytes, is_missing
+        "SELECT id, file_path, filename, file_type, custom_category, is_primary, size_bytes, is_missing, display_name
          FROM files WHERE game_id = ?1",
     )?;
     let mut rows = stmt
@@ -224,6 +226,7 @@ pub fn file_records(conn: &Connection, game_id: i64) -> Result<Vec<FileRecord>> 
                 is_primary: r.get::<_, i64>(5)? != 0,
                 size_bytes: r.get(6)?,
                 is_missing: r.get::<_, i64>(7)? != 0,
+                display_name: r.get(8)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -283,6 +286,21 @@ pub fn set_category(conn: &Connection, game_id: i64, file_id: i64, category: Opt
         return Err(CoreError::not_found("The file record no longer exists."));
     }
     Ok(())
+}
+
+/// The name the catalog shows for a file. Only the record changes: the file
+/// on disk keeps its name. An empty name (or the file's own name) restores
+/// the file name.
+pub fn set_display_name(conn: &Connection, game_id: i64, file_id: i64, name: &str) -> Result<Option<String>> {
+    let (path, filename): (String, String) = conn
+        .query_row("SELECT file_path, filename FROM files WHERE id = ?1 AND game_id = ?2", params![file_id, game_id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()?
+        .ok_or_else(|| CoreError::not_found("The file record no longer exists."))?;
+    let clean = crate::text::display_name(name, &filename)?.filter(|n| *n != path);
+    conn.execute("UPDATE files SET display_name = ?1 WHERE id = ?2", params![clean, file_id])?;
+    Ok(clean)
 }
 
 /// Marks the main installer (or clears it with `None`).
