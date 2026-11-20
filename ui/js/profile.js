@@ -9,7 +9,7 @@ import { createCropper } from './cropper.js';
 import { shotsPanelHtml, openGallery, addShots, SHOT_DROP_HINT } from './gallery.js';
 import { additionsPanelHtml, bindAdditions, addFiles, ADDITIONS_DROP_HINT } from './additions.js';
 import { onFiles } from './dropzone.js';
-import { navigate, setLeaveGuard, state } from './store.js';
+import { navigate, setLeaveGuard, state, openHint } from './store.js';
 import { refreshFacets } from './facets.js';
 import { openGameForm } from './gameform.js';
 import { openEntryEditor, deleteEntry, entryHtml } from './journal.js';
@@ -21,6 +21,12 @@ let extras = []; // additional files
 let content = null;
 let recent = [];
 let notesDirty = false;
+
+// a game started with Play has started or ended: update Play / Running
+document.addEventListener('gc-running-changed', () => {
+  const box = document.getElementById('pf-install');
+  if (game && box) box.innerHTML = renderInstall();
+});
 
 // ---------------------------------------------------------------- game
 
@@ -59,14 +65,18 @@ function renderInstall() {
         <div class="hint">If it is installed but was not found, point to its program.</div></div>
       <div class="inst-actions"><button class="btn small" id="pf-inst-locate">Locate…</button></div>`;
   }
-  let note = `<div class="hint">${esc(SOURCE[i.source] || i.source)}</div>`;
+  // the path is not printed (less text on screen): "Show location" opens it,
+  // and the tooltip tells where it is and how it was found
+  const where = [i.installDir, i.exe ? `Program: ${i.exe}` : '', SOURCE[i.source] || i.source].filter(Boolean).join('\n');
+  let note = '';
   if (!i.found) note = '<div class="warn-text">The installation folder was not found.</div>';
   else if (!i.canPlay) note = '<div class="warn-text">The game\'s program is not known – use Locate…</div>';
-  return `${installBox(i.found)}<div class="inst-text"><b>Installed on this PC</b>
-        <div class="mono path" title="${esc(i.exe || i.installDir)}">${esc(i.installDir)}</div>${note}</div>
-      ${i.canPlay ? '<button class="btn gold inst-play" id="pf-play" title="Start the installed game (asks first)">▶ Play</button>' : ''}
+  return `${installBox(i.found)}<div class="inst-text" title="${esc(where)}"><b>Installed on this PC</b>${note}</div>
+      ${!i.canPlay ? '' : state.running.has(game.id)
+    ? '<button class="btn gold inst-play" id="pf-play" disabled title="The game is running. When it ends, Game Curator offers a journal entry.">● Running</button>'
+    : '<button class="btn gold inst-play" id="pf-play" title="Start the installed game (asks first)">▶ Play</button>'}
       <div class="inst-actions">
-        ${i.found ? '<button class="btn small" id="pf-inst-folder" title="Open the installation folder in Explorer">Show location</button>' : ''}
+        ${i.found ? `<button class="btn small" id="pf-inst-folder" title="Open the installation folder in Explorer:\n${esc(i.installDir)}">Show location</button>` : ''}
         <button class="btn small" id="pf-inst-locate" title="Choose the game's program yourself">${i.found && i.canPlay ? 'Change…' : 'Locate…'}</button>
         ${i.source === 'manual' || !i.found ? '<button class="btn small" id="pf-inst-forget" title="Forget this location (nothing on disk is touched)">Forget</button>' : ''}
       </div>`;
@@ -174,9 +184,44 @@ function categoryOptions(f) {
 
 function fileActions(f) {
   if (f.isMissing) return '<span class="badge missing">missing</span>';
-  if (f.runnable) return `<button class="btn small" data-run="${f.id}" title="Start this program (asks first)">▶ Run</button>`;
-  if (f.risky) return '<button class="btn small" disabled title="Scripts and shortcuts are not opened for safety">Open</button>';
-  return `<button class="btn small" data-open="${f.id}">Open</button>`;
+  const rename = `<button class="btn small icon" data-rename="${f.id}" title="Rename in the catalog – the file on disk keeps its name">✎</button>`;
+  if (f.runnable) return `<button class="btn small" data-run="${f.id}" title="Start this program (asks first)">▶ Run</button>${rename}`;
+  if (f.risky) return `<button class="btn small" disabled title="Scripts and shortcuts are not opened for safety">Open</button>${rename}`;
+  return `<button class="btn small" data-open="${f.id}" title="${esc(openHint(f.filename))}">Open</button>${rename}`;
+}
+
+/** Name shown in the catalog instead of the file name; the file keeps its name. */
+async function renameFileFlow(f) {
+  const m = openModal({
+    title: 'Name in the catalog',
+    width: 480,
+    body: `<div class="notice err" id="rn-error" hidden></div>
+      <label class="field-label" for="rn-name">Name shown in Game Curator</label>
+      <input class="field" id="rn-name" maxlength="120" spellcheck="false" style="width:100%;margin-top:4px" value="${esc(f.displayName || f.filename)}">
+      <p class="hint" style="margin:10px 0 0">Only the name in the catalog changes. The file on disk keeps its own name:</p>
+      <div class="mono muted">${esc(f.filePath)}</div>`,
+    footer: `${f.displayName ? '<button class="btn left" id="rn-reset">Use the file name</button>' : ''}<button class="btn" data-close>Cancel</button><button class="btn gold" id="rn-save">Save</button>`,
+    onKey: (e) => {
+      if (e.key === 'Enter' && e.target.id === 'rn-name') { e.preventDefault(); m.el.querySelector('#rn-save').click(); return true; }
+      return false;
+    },
+  });
+  const q = (sel) => m.el.querySelector(sel);
+  const save = async (name) => {
+    try {
+      await api.setFileDisplayName(game.id, f.id, name);
+      m.close(true);
+    } catch (e) {
+      q('#rn-error').textContent = String(e);
+      q('#rn-error').hidden = false;
+    }
+  };
+  q('#rn-save').addEventListener('click', () => save(q('#rn-name').value));
+  q('#rn-reset')?.addEventListener('click', () => save(''));
+  setTimeout(() => q('#rn-name').select(), 0);
+  if (!(await m.result)) return;
+  await refreshContent();
+  toast('Name in the catalog changed. The file itself was not renamed.');
 }
 
 function summary(files) {
@@ -192,7 +237,9 @@ function summary(files) {
 function fileRow(f) {
   return `<tr class="${f.isMissing ? 'missing' : ''}">
     <td class="pri">${f.runnable ? `<button class="primary-btn ${f.isPrimary ? 'on' : ''}" data-primary="${f.id}" title="${f.isPrimary ? 'Main installer (click to unmark)' : 'Mark as the main installer'}">★</button>` : ''}</td>
-    <td class="mono" title="${esc(f.filePath)}">${esc(f.filePath)}</td>
+    ${f.displayName
+      ? `<td class="fname renamed" title="${esc(`${f.displayName}\nFile on disk: ${f.filePath}`)}">${esc(f.displayName)}</td>`
+      : `<td class="mono fname" title="${esc(f.filePath)}">${esc(f.filePath)}</td>`}
     <td class="cat"><select class="field cat-select" data-cat="${f.id}" title="Category">${categoryOptions(f)}</select></td>
     <td class="num">${formatBytes(f.sizeBytes)}</td>
     <td class="act">${fileActions(f)}</td></tr>`;
@@ -249,7 +296,7 @@ function render() {
   main.innerHTML = `<div class="view">
     <div class="profile-head">
       <button class="btn" id="pf-back">◄ Library</button>
-      <h1 title="${esc(g.title)}">${esc(g.title)}</h1>
+      <h1 class="game-title${install ? ' inst' : ''}" title="${esc(g.title)}">${esc(g.title)}</h1>
       ${g.isAvailable ? '' : '<span class="badge offline">OFFLINE</span>'}
       <button class="btn" id="pf-edit">✎ Edit</button>
       <button class="btn danger" id="pf-remove">Remove from catalog</button>
@@ -395,7 +442,6 @@ function bind() {
     }
   }));
   byId('pf-remove').addEventListener('click', () => guard(async () => { await saveNotes(); await removeFlow(); }));
-  byId('pf-play')?.addEventListener('click', () => guard(playFlow));
   bindSplit();
   byId('pf-adjust')?.addEventListener('click', () => guard(adjustArtworkFlow));
 
@@ -403,6 +449,7 @@ function bind() {
   byId('pf-install').addEventListener('click', (e) => {
     const t = e.target;
     const refresh = async () => { install = await api.installStatus(id); render(); };
+    if (t.closest('#pf-play')) return guard(playFlow);
     if (t.closest('#pf-inst-folder')) return guard(() => api.openInstallFolder(id).then(() => toast('Installation folder opened.')));
     if (t.closest('#pf-inst-locate')) {
       return guard(async () => {
@@ -434,7 +481,7 @@ function bind() {
     const dir = t.closest('[data-dir]');
     if (dir) return guard(() => api.openGameFolder(id, dir.dataset.dir));
     const open = t.closest('[data-open]');
-    if (open) return guard(() => api.openFile(id, Number(open.dataset.open)).then(() => toast('Opened with the default application.')));
+    if (open) return guard(() => api.openFile(id, Number(open.dataset.open)).then((how) => { if (how === 'external') toast('Opened with the default application.'); }));
     const run = t.closest('[data-run]');
     if (run) {
       const f = content.files.find((x) => x.id === Number(run.dataset.run));
@@ -449,6 +496,11 @@ function bind() {
         await api.runFile(id, f.id);
         toast(`Started ${f.filename}.`);
       });
+    }
+    const ren = t.closest('[data-rename]');
+    if (ren) {
+      const f = content.files.find((x) => x.id === Number(ren.dataset.rename));
+      return guard(() => renameFileFlow(f));
     }
     const prim = t.closest('[data-primary]');
     if (prim) {

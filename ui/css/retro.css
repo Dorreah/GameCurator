@@ -1,7 +1,8 @@
-/* Game Curator - default "Classic" theme.
-   A dark, quiet take on the big-box era launchers: near-black surfaces,
-   thin bevelled frames, a single violet accent (a quiet nod to GOG).
-   No transitions, no web fonts, nothing that competes with the archive. */
+/* Game Curator - base stylesheet: layout, controls and the dark palette with
+   a single violet accent (a quiet nod to GOG) that every theme starts from.
+   The default "Classic" look adds its VGA-launcher styling (pixel font,
+   chunky bevels) in classic.css; the text-mode themes live in themes.css.
+   No animation, nothing that competes with the archive. */
 
 :root {
   --bg: #0d0b12;          /* window background */
@@ -136,6 +137,7 @@ fieldset.group legend { padding: 0 6px; color: var(--muted); font: bold 11px var
 .hint { color: var(--muted); font-size: 12px; }
 .muted { color: var(--muted); }
 .mono { font-family: Consolas, "Lucida Console", monospace; font-size: 12px; user-select: text; word-break: break-all; }
+.mono.small { font-size: 11px; }
 
 /* ---------- LEDs & badges ---------- */
 .led { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); vertical-align: middle; }
@@ -374,6 +376,14 @@ select.cat-select:hover, select.cat-select:focus { border-color: var(--line); co
 .card .s { display: flex; align-items: center; gap: 6px; }
 .card .s > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.list .inst-col { width: 34px; text-align: center; }
+/* icon of an installed game in the catalog; the column keeps them aligned */
+table.list .ico-col { width: 32px; padding-left: 2px; padding-right: 2px; text-align: center; }
+table.list td.ico-col { padding-top: 2px; padding-bottom: 2px; }
+.game-icon { display: block; width: 24px; height: 24px; margin: 0 auto; object-fit: contain; }
+/* a file shown under its catalog name (the file keeps its own name) */
+.fname.renamed { font-family: var(--ui-font); color: var(--text); }
+.field-label { display: block; color: var(--muted); }
+.form-label { color: var(--muted); }
 .install-row { display: grid; grid-template-columns: 17px 1fr auto; align-items: start; gap: 8px 10px; margin-top: 12px; padding: 9px 10px; border: 1px solid var(--line); background: var(--surface-2); }
 .install-row .inst-box { width: 17px; height: 17px; margin-top: 1px; }
 .install-row .inst-text { min-width: 0; }

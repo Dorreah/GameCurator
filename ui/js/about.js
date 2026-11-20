@@ -52,6 +52,18 @@ export const aboutView = {
         <dt>Database</dt><dd class="mono">${esc(info.dbPath)}</dd>
         <dt>WebView</dt><dd>${esc(info.webviewVersion)} (${esc(info.platform)})</dd>
       </dl>` : '<p class="muted">Information about this copy is not available.</p>'}
+
+      <h2>Credits</h2>
+      <p class="hint">The Classic look uses the pixel font <b>Pixel Operator</b> by Jayvee Enaguas (CC0, public domain).
+        DOS Midnight uses <b>PxPlus IBM VGA8</b> by VileR from The Ultimate Oldschool PC Font Pack
+        (int10h.org), licensed CC BY-SA 4.0 and included unchanged.
+        Other fonts for the Classic look: <b>Dogica</b> and <b>Dogica Pixel</b> © 2020 Roberto Mocci
+        (SIL Open Font License 1.1, Reserved Font Names Dogica and Dogica Pixel, included unchanged),
+        <b>Geist Pixel</b> © 2026 The Geist Project Authors (SIL Open Font License 1.1) and
+        <b>Roboto Slab</b> (Apache License 2.0).</p>
+      <p class="hint">PDF manuals are shown with <b>PDF.js</b> by Mozilla (Apache License 2.0), with its standard fonts
+        (Foxit, BSD-style licence; Liberation, SIL Open Font License 1.1) and image decoders (OpenJPEG, BSD; PDFium JBIG2, BSD; qcms, MIT).
+        The licence texts are in the <span class="mono">Licenses</span> folder next to GameCurator.exe.</p>
     </div></div></div>`;
     document.getElementById('ab-welcome').addEventListener('click', () => openWelcome());
   },

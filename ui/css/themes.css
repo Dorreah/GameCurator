@@ -1,48 +1,69 @@
 /* Game Curator - optional themes. Purely visual: layout, controls and
    behaviour are identical in every theme.
 
-   html[data-theme="classic"]  CD-ROM launcher (retro.css, default)
+   html[data-theme="classic"]  VGA launcher (retro.css + classic.css, default)
    html[data-theme="amber"]    Terminal CRT Amber
    html[data-theme="matrix"]   Matrix terminal
    html[data-theme="dos"]      DOS Midnight (MS-DOS text mode, darker)
 
    The text-mode themes share the rules below (html.term) and only differ in
    their palette and decorations (DOS Midnight has colours, a crisp screen
-   without phosphor glow or scanlines, and window shadows). Everything is static - no
-   animations, no blinking.
+   without phosphor glow or scanlines, window shadows and the IBM VGA font).
+   Everything is static - no animations, no blinking.
+
+   Colour roles (so a theme is more than one phosphor colour, and easier on
+   the eyes): --t-fg body text and frames, --t-hi highlights and warnings,
+   --t-strong bold text and headings, --t-title game titles, --t-key button
+   labels, --t-bar / --t-on-bar the inverse bars (strips, active menu item,
+   window titles). Matrix: soft green + white + yellow. Amber: soft amber +
+   warm white + light red.
 
    Performance: no full-screen overlay and no CSS filters on the scrolling
    game grid (both measured to cut scrolling from ~45 to ~16 fps without GPU).
    Scanlines live on the static chrome; artwork is tinted with a plain
    translucent layer. */
 
-html[data-theme="amber"] {
-  --t-bg: #0c0700;
-  --t-bg2: #1a1000;
-  --t-panel: #110a01;
-  --t-fg: #ffb000;
-  --t-hi: #ffd67f;
-  --t-dim: #b87c00;
-  --t-faint: #4f3500;
-  --t-glow: rgba(255, 176, 0, 0.55);
-  --t-tint: rgba(190, 110, 0, 0.5);
+/* Amber: a calmer amber than the raw phosphor, warm white for headings and
+   bold text, light red for game titles and highlights */
+html.term[data-theme="amber"] {
+  --t-bg: #0d0803;
+  --t-bg2: #1a1107;
+  --t-panel: #110b04;
+  --t-fg: #e3a04a;
+  --t-hi: #f2826f;
+  --t-dim: #a26f31;
+  --t-faint: #4a3215;
+  --t-strong: #f7ecdc;
+  --t-title: #f2826f;
+  --t-key: #f7ecdc;
+  --t-bar: #b9823c;
+  --t-on-bar: #120b03;
+  --t-glow: rgba(227, 160, 74, 0.28);
+  --t-tint: rgba(160, 95, 25, 0.45);
 }
 
-html[data-theme="matrix"] {
-  --t-bg: #000;
-  --t-bg2: #031203;
-  --t-panel: #010901;
-  --t-fg: #2bff5f;
-  --t-hi: #c4ffd2;
-  --t-dim: #13a336;
-  --t-faint: #0a3d16;
-  --t-glow: rgba(0, 255, 65, 0.5);
-  --t-tint: rgba(0, 140, 40, 0.5);
+/* Matrix: a soft green instead of the neon one, white for headings and bold
+   text, yellow for game titles, button labels and highlights */
+html.term[data-theme="matrix"] {
+  --t-bg: #020504;
+  --t-bg2: #07140d;
+  --t-panel: #040b07;
+  --t-fg: #6cc48f;
+  --t-hi: #eed27a;
+  --t-dim: #3f8a60;
+  --t-faint: #173a27;
+  --t-strong: #eef4f0;
+  --t-title: #eed27a;
+  --t-key: #eed27a;
+  --t-bar: #3f9466;
+  --t-on-bar: #020504;
+  --t-glow: rgba(108, 196, 143, 0.28);
+  --t-tint: rgba(25, 105, 60, 0.45);
 }
 
 /* ---------------------------------------------------------------- base */
 
-html[data-theme="dos"] {
+html.term[data-theme="dos"] {
   --t-bg: #00001e;     /* the DOS blue, dimmed for the evening */
   --t-bg2: #000a3c;
   --t-panel: #00052a;
@@ -50,6 +71,10 @@ html[data-theme="dos"] {
   --t-hi: #ffff55;     /* bright yellow */
   --t-dim: #6070cc;    /* blue-grey: frames, secondary text */
   --t-faint: #1d2674;
+  --t-strong: #ffffff; /* bright white */
+  --t-title: #ffff55;
+  --t-bar: #00aaaa;    /* cyan selection bar */
+  --t-on-bar: #000;
   --t-glow: rgba(0, 0, 0, 0); /* crisp text mode: no glow */
   --t-tint: rgba(0, 0, 80, 0.3);
 }
@@ -76,17 +101,28 @@ html.term {
   --danger: var(--t-hi);
   --warn: var(--t-hi);
   --ok: var(--t-fg);
+  /* colour roles; a theme overrides the ones it uses */
+  --t-strong: var(--t-hi);
+  --t-title: var(--t-hi);
+  --t-key: var(--t-fg);
+  --t-bar: var(--t-fg);
+  --t-on-bar: var(--t-bg);
   color-scheme: dark;
 }
 html.term body { background: var(--t-bg); color: var(--t-fg); letter-spacing: 0.2px; }
-html.term ::selection { background: var(--t-fg); color: var(--t-bg); }
+html.term ::selection { background: var(--t-bar); color: var(--t-on-bar); }
+html.term :focus-visible:not(.field):not(.editor) { outline: 1px dashed var(--t-strong); outline-offset: 2px; }
+/* bold text and headings in the "strong" colour; inside inverse bars they keep the bar's text colour */
+html.term :is(b, strong) { color: var(--t-strong); }
+html.term :is(.strip, .window-title, .nav button.active, .notice.err, .toast.err, .btn, .badge, .entry-date, .wizard-steps li.current, .statusbar .sb-msg.err) :is(b, strong),
+html.term table.list tbody tr.click:hover :is(b, strong) { color: inherit; }
 
 /* static CRT scanlines on the non-scrolling chrome (never intercept clicks) */
 html.term .sidebar, html.term .statusbar, html.term .window, html.term .strip, html.term .empty { position: relative; }
 html.term .sidebar::after, html.term .statusbar::after,
 html.term .window::after, html.term .strip::after, html.term .empty::after {
   content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none;
-  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.22) 2px 3px);
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.12) 2px 3px);
 }
 
 /* scrollbars */
@@ -105,7 +141,7 @@ html.term .logo { border-bottom: 3px double var(--t-dim); }
 html.term .logo-mark { display: none; }
 html.term .logo-text {
   font: bold 15px/1 var(--mono); font-style: normal; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--t-hi); text-shadow: 0 0 6px var(--t-glow);
+  color: var(--t-strong); text-shadow: 0 0 6px var(--t-glow);
 }
 html.term .logo-text::after { content: "\2588"; margin-left: 3px; color: var(--t-fg); }
 html.term .logo-sub { color: var(--t-dim); font-family: var(--mono); letter-spacing: 1px; }
@@ -117,16 +153,16 @@ html.term .nav button {
   background: transparent; border: 1px solid transparent;
 }
 html.term .nav button:hover { color: var(--t-fg); background: transparent; border-color: var(--t-faint); }
-html.term .nav button.active { color: var(--t-bg); background: var(--t-fg); border-color: var(--t-fg); }
-html.term .nav button.active svg { color: var(--t-bg); }
+html.term .nav button.active { color: var(--t-on-bar); background: var(--t-bar); border-color: var(--t-bar); }
+html.term .nav button.active svg { color: var(--t-on-bar); }
 
 /* ---------------------------------------------------------------- strips, toolbars */
 
 html.term .panel > .strip, html.term .strip {
-  background: var(--t-fg); color: var(--t-bg); border-bottom: 1px solid var(--t-fg);
+  background: var(--t-bar); color: var(--t-on-bar); border-bottom: 1px solid var(--t-bar);
   font: bold 12px var(--mono); letter-spacing: 1px;
 }
-html.term .strip .count { color: var(--t-bg); opacity: 0.75; }
+html.term .strip .count { color: var(--t-on-bar); opacity: 0.75; }
 html.term .toolbar { background: transparent; border-bottom: 1px dashed var(--t-faint); }
 html.term .toolbar .sep { border-left: 1px solid var(--t-faint); border-right: none; width: 1px; }
 
@@ -134,14 +170,14 @@ html.term .toolbar .sep { border-left: 1px solid var(--t-faint); border-right: n
 
 html.term .btn {
   font: bold 12px var(--mono); text-transform: uppercase; text-shadow: none;
-  color: var(--t-fg); background: transparent; border: 1px solid var(--t-dim);
+  color: var(--t-key); background: transparent; border: 1px solid var(--t-dim);
 }
 html.term .btn::before { content: "["; margin-right: 2px; color: var(--t-dim); font-weight: normal; }
 html.term .btn::after { content: "]"; margin-left: 2px; color: var(--t-dim); font-weight: normal; }
-html.term .btn:hover, html.term .btn.gold:hover, html.term .btn.danger:hover { background: var(--t-fg); color: var(--t-bg); border-color: var(--t-fg); }
-html.term .btn:hover::before, html.term .btn:hover::after { color: var(--t-bg); }
-html.term .btn:active, html.term .btn.pressed { padding: 4px 12px; background: var(--t-fg); color: var(--t-bg); border-color: var(--t-fg); }
-html.term .btn.pressed::before, html.term .btn.pressed::after, html.term .btn:active::before, html.term .btn:active::after { color: var(--t-bg); }
+html.term .btn:hover, html.term .btn.gold:hover, html.term .btn.danger:hover { background: var(--t-bar); color: var(--t-on-bar); border-color: var(--t-bar); text-shadow: none; }
+html.term .btn:hover::before, html.term .btn:hover::after { color: var(--t-on-bar); }
+html.term .btn:active, html.term .btn.pressed { padding: 4px 12px; background: var(--t-bar); color: var(--t-on-bar); border-color: var(--t-bar); }
+html.term .btn.pressed::before, html.term .btn.pressed::after, html.term .btn:active::before, html.term .btn:active::after { color: var(--t-on-bar); }
 html.term .btn.small:active, html.term .btn.small.pressed { padding: 1px 8px; }
 html.term .btn.gold { color: var(--t-hi); border-color: var(--t-fg); background: transparent; text-shadow: 0 0 5px var(--t-glow); }
 html.term .btn.danger { color: var(--t-hi); border: 1px dashed var(--t-hi); background: transparent; }
@@ -151,12 +187,14 @@ html.term .btn:disabled, html.term .btn:disabled:hover, html.term .btn.gold:disa
 html.term .btn.small:disabled { padding: 1px 8px; }
 html.term .btn:disabled::before, html.term .btn:disabled::after { color: var(--t-faint); }
 html.term .window-title .btn.x::before, html.term .window-title .btn.x::after { content: none; }
+/* buttons in table action cells drop their brackets, leaving more room for file names */
+html.term td.act .btn::before, html.term td.act .btn::after { content: none; }
 
 html.term .field, html.term select.field, html.term textarea.field {
   background-color: var(--t-bg); color: var(--t-fg); caret-color: var(--t-fg);
   border: 1px solid var(--t-dim); font-family: var(--mono);
 }
-html.term .field:focus { border-color: var(--t-hi); background-color: var(--t-bg2); box-shadow: 0 0 0 1px var(--t-hi) inset; }
+html.term .field:focus { border-color: var(--t-strong); background-color: var(--t-bg2); box-shadow: 0 0 0 1px var(--t-strong) inset; }
 html.term .field::placeholder { color: var(--t-faint); }
 html.term select.field {
   background-image:
@@ -168,7 +206,7 @@ html.term select.field {
 html.term select.field option { background: var(--t-bg); color: var(--t-fg); }
 html.term input[type=checkbox], html.term input[type=radio] { accent-color: var(--t-fg); }
 html.term fieldset.group { border: 1px solid var(--t-faint); background: transparent; }
-html.term fieldset.group legend { color: var(--t-hi); font-family: var(--mono); }
+html.term fieldset.group legend { color: var(--t-strong); font-family: var(--mono); }
 html.term .hint, html.term .muted { color: var(--t-dim); }
 
 /* ---------------------------------------------------------------- sidebar */
@@ -186,15 +224,15 @@ html.term .cover:has(> img)::after, html.term .game-info .cover-big:has(> img)::
 html.term .card:hover .cover::after, html.term .card:focus-visible .cover::after { background: none; }
 html.term .card .stamp { z-index: 2; }
 html.term .card.offline .cover img { filter: grayscale(1) brightness(0.45); }
-html.term .cover .ph { background: var(--t-bg2); color: var(--t-hi); font-family: var(--mono); text-shadow: 0 0 6px var(--t-glow); }
+html.term .cover .ph { background: var(--t-bg2); color: var(--t-title); font-family: var(--mono); text-shadow: 0 0 6px var(--t-glow); }
 html.term .cover .ph::before { background: var(--t-dim); }
 html.term .card .meta { background: transparent; }
-html.term .card .t { font-family: var(--mono); }
+html.term .card .t { font-family: var(--mono); color: var(--t-title); }
 html.term #gf-cover { background: var(--t-bg) !important; border: 1px solid var(--t-dim); }
 
 /* badges: monochrome, told apart by style */
 html.term .badge { font: bold 10.5px var(--mono); text-transform: uppercase; background: transparent; border: 1px solid var(--t-dim); color: var(--t-fg); }
-html.term .badge.new { background: var(--t-fg); color: var(--t-bg); border-color: var(--t-fg); }
+html.term .badge.new { background: var(--t-bar); color: var(--t-on-bar); border-color: var(--t-bar); }
 html.term .badge.known { color: var(--t-dim); border-color: var(--t-faint); }
 html.term .badge.dup { color: var(--t-hi); border-style: dashed; }
 html.term .badge.offline { background: var(--t-hi); color: var(--t-bg); border-color: var(--t-hi); }
@@ -202,32 +240,35 @@ html.term .badge.missing { color: var(--t-hi); border-style: dashed; }
 html.term .chip { background: transparent; border: 1px dashed var(--t-dim); color: var(--t-fg); }
 html.term .primary-btn { color: var(--t-faint); }
 html.term .primary-btn.on { color: var(--t-hi); text-shadow: 0 0 4px var(--t-glow); }
-html.term table.files tr.group th { background: transparent; color: var(--t-hi); border: 0; border-bottom: 1px dashed var(--t-faint); }
+html.term table.files tr.group th { background: transparent; color: var(--t-strong); border: 0; border-bottom: 1px dashed var(--t-faint); }
 html.term table.files tr.group th .n { color: var(--t-dim); }
 html.term select.cat-select { width: 150px; background-color: transparent; border-color: transparent; color: var(--t-dim); box-shadow: none; }
 html.term select.cat-select:hover, html.term select.cat-select:focus { border-color: var(--t-dim); color: var(--t-fg); }
-html.term .archive-summary b { color: var(--t-hi); }
+html.term .archive-summary b { color: var(--t-strong); }
+/* game titles in the catalog */
+html.term #lib-scroll table.list td b { color: var(--t-title); }
+html.term #lib-scroll table.list tbody tr.click:hover td b { color: inherit; }
 
-html.term table.list th { background: var(--t-bg2); color: var(--t-hi); border: 1px solid var(--t-faint); font-family: var(--mono); text-transform: uppercase; }
+html.term table.list th { background: var(--t-bg2); color: var(--t-strong); border: 1px solid var(--t-faint); font-family: var(--mono); text-transform: uppercase; }
 html.term table.list td { border-bottom: 1px dashed var(--t-faint); }
 html.term table.list tbody tr:nth-child(even) td { background: transparent; }
-html.term table.list tbody tr.click:hover td { background: var(--t-fg); color: var(--t-bg); }
-html.term table.list tbody tr.click:hover .badge { color: var(--t-bg); border-color: var(--t-bg); background: transparent; }
+html.term table.list tbody tr.click:hover td { background: var(--t-bar); color: var(--t-on-bar); }
+html.term table.list tbody tr.click:hover .badge { color: var(--t-on-bar); border-color: var(--t-on-bar); background: transparent; }
 
 html.term .empty { background: var(--t-bg); border: 3px double var(--t-dim); }
-html.term .empty h2 { font: bold 18px var(--mono); text-transform: uppercase; color: var(--t-hi); text-shadow: 0 0 6px var(--t-glow); }
+html.term .empty h2 { font: bold 18px var(--mono); text-transform: uppercase; color: var(--t-strong); text-shadow: 0 0 6px var(--t-glow); }
 
 /* ---------------------------------------------------------------- profile */
 
 html.term .profile-head { background: transparent; border-bottom: 3px double var(--t-dim); }
-html.term .profile-head h1 { font: bold 22px var(--mono); text-transform: uppercase; color: var(--t-hi); text-shadow: 0 0 6px var(--t-glow); }
+html.term .profile-head h1 { font: bold 22px var(--mono); text-transform: uppercase; color: var(--t-title); text-shadow: 0 0 6px var(--t-glow); }
 html.term .game-info .cover-big { border: 1px solid var(--t-dim); background: var(--t-bg2); }
 html.term .pathline { background: var(--t-bg); border: 1px dashed var(--t-faint); }
 html.term .desc { color: var(--t-fg); }
 html.term .notice { background: transparent; border: 1px solid var(--t-dim); color: var(--t-fg); }
 html.term .notice.warn { border-color: var(--t-hi); color: var(--t-hi); }
 html.term .notice.warn::before { content: "!! "; font-weight: bold; }
-html.term .notice.err { background: var(--t-fg); color: var(--t-bg); border-color: var(--t-fg); font-weight: bold; }
+html.term .notice.err { background: var(--t-hi); color: var(--t-bg); border-color: var(--t-hi); font-weight: bold; }
 html.term .notice.err::before { content: "ERROR: "; }
 html.term .notice.ok { border-color: var(--t-dim); color: var(--t-fg); }
 html.term .notice.ok::before { content: "OK: "; font-weight: bold; }
@@ -242,15 +283,15 @@ html.term .led.warn { background: var(--t-dim); }
 
 html.term .entry { background: var(--t-bg); border: 1px solid var(--t-dim); }
 html.term .entry-head { background: var(--t-bg2); border-bottom: 1px dashed var(--t-faint); }
-html.term .entry-date { background: var(--t-fg); color: var(--t-bg); padding: 0 6px; font-family: var(--mono); }
-html.term .entry-title { font-family: var(--mono); color: var(--t-hi); }
-html.term .entry-game { color: var(--t-hi); font-family: var(--mono); }
-html.term .rich h2 { font: bold 16px var(--mono); color: var(--t-hi); text-transform: uppercase; text-shadow: 0 0 5px var(--t-glow); }
+html.term .entry-date { background: var(--t-bar); color: var(--t-on-bar); padding: 0 6px; font-family: var(--mono); }
+html.term .entry-title { font-family: var(--mono); color: var(--t-strong); }
+html.term .entry-game { color: var(--t-title); font-family: var(--mono); }
+html.term .rich h2 { font: bold 16px var(--mono); color: var(--t-strong); text-transform: uppercase; text-shadow: 0 0 5px var(--t-glow); }
 html.term .rich h3 { font: bold 14px var(--mono); color: var(--t-fg); text-decoration: underline; }
 html.term .rich blockquote { border-left: 2px solid var(--t-dim); color: var(--t-dim); }
 html.term .editor-toolbar { background: var(--t-bg2); border: 1px solid var(--t-dim); border-bottom: none; }
 html.term .editor { background: var(--t-bg); border: 1px solid var(--t-dim); }
-html.term .editor:focus { border-color: var(--t-hi); }
+html.term .editor:focus { border-color: var(--t-strong); }
 html.term .editor:empty::before { color: var(--t-faint); }
 
 /* ---------------------------------------------------------------- scanner, settings */
@@ -258,7 +299,7 @@ html.term .editor:empty::before { color: var(--t-faint); }
 html.term .progress { background: var(--t-bg); border: 1px solid var(--t-dim); }
 html.term .progress i { background: var(--t-faint); }
 html.term .progress i.on { background: var(--t-fg); box-shadow: 0 0 4px var(--t-glow); }
-html.term .scan-status b { color: var(--t-hi); }
+html.term .scan-status b { color: var(--t-strong); }
 html.term .backup-list { background: var(--t-bg); border: 1px solid var(--t-faint); }
 
 /* ---------------------------------------------------------------- status bar */
@@ -267,34 +308,34 @@ html.term .statusbar { background: var(--t-bg); border-top: 3px double var(--t-d
 html.term .statusbar > div { border: 1px solid var(--t-faint); }
 html.term .statusbar .sb-msg::before { content: "> "; color: var(--t-dim); }
 html.term .statusbar .sb-msg.err { color: var(--t-bg); background: var(--t-hi); }
-html.term .statusbar .sb-msg.ok { color: var(--t-hi); }
+html.term .statusbar .sb-msg.ok { color: var(--t-strong); }
 html.term .statusbar .sb-archive.bad { color: var(--t-bg); background: var(--t-hi); }
 
 /* ---------------------------------------------------------------- windows */
 
 html.term .overlay { background: rgba(0, 0, 0, 0.78); }
 html.term .window { background: var(--t-panel); border: 3px double var(--t-fg); box-shadow: 0 0 16px var(--t-glow); }
-html.term .window-title { background: var(--t-fg); color: var(--t-bg); border-bottom: 1px solid var(--t-fg); font: bold 13px var(--mono); text-transform: uppercase; }
-html.term .window-title .btn.x { color: var(--t-bg); border-color: var(--t-bg); }
-html.term .window-title .btn.x:hover { background: var(--t-bg); color: var(--t-fg); }
+html.term .window-title { background: var(--t-bar); color: var(--t-on-bar); border-bottom: 1px solid var(--t-bar); font: bold 13px var(--mono); text-transform: uppercase; }
+html.term .window-title .btn.x { color: var(--t-on-bar); border-color: var(--t-on-bar); }
+html.term .window-title .btn.x:hover { background: var(--t-on-bar); color: var(--t-bar); }
 html.term .window-foot { border-top: 1px dashed var(--t-faint); box-shadow: none; }
 html.term .dlg-icon { font-family: var(--mono); border: 1px solid var(--t-fg); }
-html.term .dlg-icon.warn, html.term .dlg-icon.err { background: var(--t-fg); color: var(--t-bg); }
+html.term .dlg-icon.warn, html.term .dlg-icon.err { background: var(--t-hi); color: var(--t-bg); border-color: var(--t-hi); }
 html.term .dlg-icon.info { background: transparent; color: var(--t-fg); }
 html.term .wizard-steps { background: var(--t-bg2); border-right: 1px solid var(--t-dim); }
 html.term .wizard-steps li { color: var(--t-faint); font-family: var(--mono); }
 html.term .wizard-steps li.done { color: var(--t-dim); }
-html.term .wizard-steps li.current { background: var(--t-fg); color: var(--t-bg); border: none; padding-left: 16px; }
-html.term .wizard-page h2 { font: bold 18px var(--mono); text-transform: uppercase; color: var(--t-hi); text-shadow: 0 0 6px var(--t-glow); }
+html.term .wizard-steps li.current { background: var(--t-bar); color: var(--t-on-bar); border: none; padding-left: 16px; }
+html.term .wizard-page h2 { font: bold 18px var(--mono); text-transform: uppercase; color: var(--t-strong); text-shadow: 0 0 6px var(--t-glow); }
 html.term .toast { background: var(--t-panel); border: 1px solid var(--t-fg); box-shadow: 0 0 10px var(--t-glow); font-family: var(--mono); }
 html.term .toast.ok { border-left: 6px solid var(--t-fg); }
-html.term .toast.err { background: var(--t-fg); color: var(--t-bg); border-color: var(--t-fg); }
+html.term .toast.err { background: var(--t-hi); color: var(--t-bg); border-color: var(--t-hi); }
 
 /* ---------------------------------------------------------------- per-theme decoration */
 
 /* Amber: warm phosphor bloom at the top of the menu */
 html[data-theme="amber"] .sidebar {
-  background: radial-gradient(ellipse at 30% 0%, rgba(255, 176, 0, 0.12), transparent 55%), var(--t-panel);
+  background: radial-gradient(ellipse at 30% 0%, rgba(227, 160, 74, 0.1), transparent 55%), var(--t-panel);
 }
 
 /* Matrix: static "digital rain" in the menu column; the menu items stay
@@ -313,7 +354,7 @@ html[data-theme="matrix"] .nav button:not(.active):hover { background: rgba(0, 0
 /* Fixed colours: each swatch always shows its own theme. */
 
 .theme-picker { display: flex; gap: 12px; flex-wrap: wrap; }
-.theme-option { display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.theme-option { display: flex; flex-direction: column; gap: 6px; cursor: pointer; width: 194px; }
 .theme-option input { position: absolute; opacity: 0; pointer-events: none; }
 .theme-swatch {
   width: 190px; height: 92px; padding: 8px 10px; overflow: hidden; position: relative;
@@ -323,10 +364,33 @@ html[data-theme="matrix"] .nav button:not(.active):hover { background: rgba(0, 0
 .theme-option input:focus-visible + .theme-swatch { outline: 2px dashed #b598e6; outline-offset: 2px; }
 .theme-swatch b { font-size: 14px; }
 .theme-swatch span { font-size: 11px; }
-.theme-swatch.classic { background: linear-gradient(180deg, #1c1626, #0d0b12); color: #e3e0ea; font-family: Georgia, serif; font-style: italic; border-left-color: #8b5cc7; }
-.theme-swatch.classic span { color: #8b8599; font: 11px Tahoma, Verdana, sans-serif; }
-.theme-swatch.amber { background: #0c0700; color: #ffb000; font-family: Consolas, "Lucida Console", monospace; text-shadow: 0 0 5px rgba(255, 176, 0, 0.6); }
-.theme-swatch.matrix { background: #000; color: #2bff5f; font-family: Consolas, "Lucida Console", monospace; text-shadow: 0 0 5px rgba(0, 255, 65, 0.6); }
+/* font picker of the Classic look: each sample in its own font, on the Classic colours */
+.font-picker { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+.font-option { display: flex; flex-direction: column; gap: 4px; cursor: pointer; width: 194px; }
+.font-option input { position: absolute; opacity: 0; pointer-events: none; }
+.font-sample {
+  display: block; width: 190px; height: 64px; padding: 8px 10px; overflow: hidden; background: #14111b; color: #c3bfcb;
+  border: 2px solid; border-color: #4b3d66 #050408 #050408 #4b3d66; letter-spacing: 0; text-transform: none;
+}
+.font-option input:checked + .font-sample { border-color: #b598e6; box-shadow: 0 0 0 1px #b598e6; }
+.font-option input:focus-visible + .font-sample { outline: 2px dashed #b598e6; outline-offset: 2px; }
+.font-name { font-weight: bold; }
+.font-sample.font-pixel-operator { font: 16px/20px "Pixel Operator", sans-serif; }
+.font-sample.font-dogica { font: 8px/16px "Dogica Pixel", "GC Pixel Symbols 8", "Pixel Operator 8", sans-serif; }
+.font-sample.font-geist-pixel { font: 14px/20px "Geist Pixel", sans-serif; }
+.font-sample.font-roboto-slab { font: 14px/20px "Roboto Slab", Georgia, serif; }
+/* Classic: pixel lettering of the VGA launcher (fonts declared in classic.css) */
+.theme-swatch.classic {
+  background: repeating-linear-gradient(to bottom, #4a3670 0 1px, transparent 1px 2px) right 10px top 11px / 76px 10px no-repeat, #14111b;
+  color: #e3e0ea; border-color: #4b3d66 #050408 #050408 #4b3d66;
+}
+.theme-swatch.classic b { font: bold 16px/16px "Pixel Operator 8", "Pixel Operator", sans-serif; text-transform: uppercase; color: #b598e6; text-shadow: 2px 2px 0 #000; }
+.theme-swatch.classic span { font: 8px/8px "Pixel Operator 8", sans-serif; text-transform: uppercase; color: #8b8599; }
+.theme-swatch.amber { background: #0d0803; color: #e3a04a; font-family: Consolas, "Lucida Console", monospace; text-shadow: 0 0 4px rgba(227, 160, 74, 0.3); }
+.theme-swatch.amber b { color: #f7ecdc; } .theme-swatch.amber b i { color: #e3a04a; } .theme-swatch.amber b u { color: #f2826f; }
+.theme-swatch.matrix { background: #020504; color: #6cc48f; font-family: Consolas, "Lucida Console", monospace; text-shadow: 0 0 4px rgba(108, 196, 143, 0.3); }
+.theme-swatch.matrix b { color: #eef4f0; } .theme-swatch.matrix b i { color: #6cc48f; } .theme-swatch.matrix b u { color: #eed27a; }
+.theme-swatch b i, .theme-swatch b u { font-style: normal; text-decoration: none; }
 .theme-swatch.amber::after, .theme-swatch.matrix::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.25) 2px 3px);
@@ -336,14 +400,14 @@ html.term .theme-option input:checked + .theme-swatch { border-color: var(--t-hi
 
 /* ---------------------------------------------------------------- journal overview, about */
 html.term .jgroup-head { border-bottom: 1px dashed var(--t-faint); }
-html.term .jgroup-title { font: bold 14px var(--mono); text-transform: uppercase; color: var(--t-hi); text-shadow: 0 0 5px var(--t-glow); }
+html.term .jgroup-title { font: bold 14px var(--mono); text-transform: uppercase; color: var(--t-title); text-shadow: 0 0 5px var(--t-glow); }
 html.term .jgroup-cover { border-color: var(--t-dim); }
 html.term .about-mark { background: var(--t-fg); }
-html.term .about h1 { font: bold 22px var(--mono); text-transform: uppercase; color: var(--t-hi); text-shadow: 0 0 6px var(--t-glow); }
+html.term .about h1 { font: bold 22px var(--mono); text-transform: uppercase; color: var(--t-strong); text-shadow: 0 0 6px var(--t-glow); }
 html.term .about .motto { font: 13px var(--mono); color: var(--t-fg); }
 html.term .about p, html.term .about ul.principles li { color: var(--t-fg); }
 html.term .about ul.principles li { border-left: 1px dashed var(--t-dim); }
-html.term .about ul.principles b { color: var(--t-hi); }
+html.term .about ul.principles b { color: var(--t-strong); }
 
 /* ---------------------------------------------------------------- profile divider */
 html.term .pf-split::before { width: 0; border-left: 1px dashed transparent; background: none; }
@@ -363,6 +427,28 @@ html.term .add-kind, html.term .add-kind.k-fix, html.term .add-kind.k-patch, htm
 html.term .add-file { border: 1px dashed var(--t-dim); background: transparent; }
 
 /* ---------------------------------------------------------------- DOS Midnight */
+/* The IBM VGA text-mode font: PxPlus IBM VGA8 by VileR (CC BY-SA 4.0, used
+   unchanged). "GC VGA Symbols" supplies the ten interface symbols it lacks,
+   drawn on the same 8x16 grid (tools/make_fonts.py). */
+@font-face { font-family: "PxPlus IBM VGA8"; src: url("../fonts/pxplus-ibm-vga8.woff2") format("woff2"); font-display: block; }
+@font-face { font-family: "GC VGA Symbols"; src: url("../fonts/gc-vga-symbols.woff2") format("woff2"); font-display: block; }
+html.term[data-theme="dos"] {
+  --mono: "PxPlus IBM VGA8", "GC VGA Symbols", "Cascadia Mono", Consolas, "Lucida Console", monospace;
+  font-synthesis: none; /* text mode has no bold or italic: emphasis is colour */
+}
+/* Text mode has one character size. The VGA font is used only at its native
+   16px with 20px lines and no letter spacing, so every glyph stays on whole
+   pixels and sharp. */
+html[data-theme="dos"] body, html[data-theme="dos"] body * { font-size: 16px !important; letter-spacing: 0 !important; line-height: 20px !important; }
+html[data-theme="dos"] :is(em, i) { color: var(--t-strong); }
+/* the theme previews in Settings keep their own type */
+html[data-theme="dos"] .theme-swatch b { font-size: 14px !important; line-height: normal !important; }
+html[data-theme="dos"] .theme-swatch span { font-size: 11px !important; line-height: normal !important; }
+html[data-theme="dos"] .theme-swatch.classic b { font-size: 16px !important; line-height: 16px !important; }
+html[data-theme="dos"] .theme-swatch.classic span { font-size: 8px !important; line-height: 8px !important; }
+html[data-theme="dos"] .theme-swatch.dos b, html[data-theme="dos"] .theme-swatch.dos span { font-size: 16px !important; line-height: 16px !important; }
+html[data-theme="dos"] .font-sample.font-dogica { font-size: 8px !important; line-height: 16px !important; }
+html[data-theme="dos"] .font-sample.font-geist-pixel, html[data-theme="dos"] .font-sample.font-roboto-slab { font-size: 14px !important; }
 /* MS-DOS text mode after dark: real colours instead of one phosphor, a crisp
    screen (no scanlines, no glow), cyan selection bars, < OK > buttons and the
    hard black shadow under windows. */
@@ -372,9 +458,9 @@ html[data-theme="dos"] .strip::after, html[data-theme="dos"] .empty::after { dis
 html[data-theme="dos"] ::selection { background: #00aaaa; color: #000; }
 html[data-theme="dos"] .logo-text::before { content: "A:\\>"; margin-right: 6px; color: var(--t-dim); text-shadow: none; }
 html[data-theme="dos"] .logo-text::after { content: "_"; }
-html[data-theme="dos"] .nav button.active { background: #00aaaa; color: #000; border-color: #00aaaa; }
-html[data-theme="dos"] .nav button.active svg { color: #000; }
-html[data-theme="dos"] .strip { background: #aaaaaa; color: #00002a; }
+
+html[data-theme="dos"] .panel > .strip, html[data-theme="dos"] .strip { background: #aaaaaa; color: #00002a; border-bottom-color: #aaaaaa; }
+html[data-theme="dos"] .strip .count { color: #00002a; }
 html[data-theme="dos"] .btn::before { content: "<"; }
 html[data-theme="dos"] .btn::after { content: ">"; }
 html[data-theme="dos"] .btn.gold { color: var(--t-hi); border-color: var(--t-hi); }
@@ -392,16 +478,23 @@ html[data-theme="dos"] ::-webkit-scrollbar-track { background: repeating-conic-g
 html[data-theme="dos"] ::-webkit-scrollbar-thumb { background: #00aaaa; border: 1px solid #00052a; }
 html[data-theme="dos"] .card:hover, html[data-theme="dos"] .card:focus-visible { border-color: var(--t-hi); box-shadow: 0 0 0 1px var(--t-hi); }
 html[data-theme="dos"] .inst-box.on { color: #55ff55; }
+html[data-theme="dos"] select.cat-select { width: 176px; }
+/* the placeholder box as pixel art at a whole 3x scale, to match the VGA font */
+html[data-theme="dos"] .cover .ph::before {
+  left: 50%; right: auto; top: 22%; width: 54px; height: 51px; margin-left: -27px;
+  -webkit-mask: url("../img/box-px.svg") 0 0 / 54px 51px no-repeat; mask: url("../img/box-px.svg") 0 0 / 54px 51px no-repeat;
+}
 html[data-theme="dos"] .add-kind.k-fix { color: #ffff55; } html[data-theme="dos"] .add-kind.k-patch { color: #55ff55; }
 html[data-theme="dos"] .add-kind.k-mod { color: #55ffff; } html[data-theme="dos"] .add-kind.k-bonus { color: #ff55ff; }
-.theme-swatch.dos { background: #00001e; color: #b4b4b4; font-family: Consolas, "Lucida Console", monospace; box-shadow: inset 0 -16px 0 #00aaaa; }
-.theme-swatch.dos b { color: #ffff55; font-weight: normal; }
-.theme-swatch.dos span { color: #000; }
+.theme-swatch.dos { background: #00001e; color: #b4b4b4; font-family: "PxPlus IBM VGA8", "GC VGA Symbols", Consolas, monospace; }
+.theme-swatch.dos b { color: #ffff55; font-weight: normal; font-size: 16px; line-height: 16px; }
+.theme-swatch.dos b i { color: #6070cc; font-style: normal; }
+.theme-swatch.dos span { margin: 0 -10px -8px; padding: 2px 10px; color: #000; background: #00aaaa; font-size: 16px; line-height: 16px; white-space: nowrap; overflow: hidden; }
 
 /* ---------------------------------------------------------------- welcome, drag and drop */
 html.term .welcome-mark { background: var(--t-fg); }
-html.term .welcome h1 { font: bold 20px var(--mono); text-transform: uppercase; color: var(--t-hi); text-shadow: 0 0 6px var(--t-glow); }
+html.term .welcome h1 { font: bold 20px var(--mono); text-transform: uppercase; color: var(--t-strong); text-shadow: 0 0 6px var(--t-glow); }
 html.term .welcome p { color: var(--t-fg); }
-html.term .welcome b { color: var(--t-hi); }
+html.term .welcome b { color: var(--t-strong); }
 html.term .welcome .welcome-motto { font: 13px var(--mono); border-left: 1px dashed var(--t-fg); color: var(--t-hi); }
 html.term [data-dropzone].drop-over::after { font-family: var(--mono); text-transform: uppercase; color: var(--t-hi); background: rgba(0, 0, 0, 0.85); }

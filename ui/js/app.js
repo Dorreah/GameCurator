@@ -1,9 +1,10 @@
 // Entry point: loads the archive info, wires navigation, status bar and
 // keyboard shortcuts, then shows the start screen.
 
+import { initSessions } from './sessions.js';
 import { api } from './api.js';
 import { esc, status, alertBox, confirmBox, modalOpen, toast } from './ui.js';
-import { state, views, navigate, onNavigate, applyTheme } from './store.js';
+import { state, views, navigate, onNavigate, applyTheme, applyClassicFont } from './store.js';
 import { refreshFacets } from './facets.js';
 import { libraryView } from './library.js';
 import { profileView } from './profile.js';
@@ -137,6 +138,7 @@ async function init() {
     return;
   }
   applyTheme(state.config.theme);
+  applyClassicFont(state.config.classicFont);
   state.query.sort = state.config.sort;
   document.getElementById('sb-version').textContent = `v${state.info.version}${state.info.testMode ? ' (test build)' : ''}`;
   setArchiveIndicator(true, state.info.archiveRoot);
@@ -146,6 +148,7 @@ async function init() {
   await navigate('library');
   if (state.info.startupNotes.length) status(state.info.startupNotes.join(' '), 'ok');
   initDropzones();
+  await initSessions();
   if (state.info.idStatus.state === 'mismatch') await handleIdMismatch();
   if (state.config.showWelcome !== false) await openWelcome();
   if (!state.config.wizardCompleted) await openWizard(false);

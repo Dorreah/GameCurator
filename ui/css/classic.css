@@ -1,0 +1,426 @@
+/* Game Curator - "Classic" theme, VGA launcher edition.
+
+   The setup and launcher screens of early-90s DOS games, in the archive's
+   violet: a pixel font (Pixel Operator by Jayvee Enaguas, CC0), chunky 2px
+   bevels with a black outline, striped title bars, hard shadows and
+   dithered fills. retro.css holds the layout and the base palette; this file
+   only restyles it, and every rule is scoped to html[data-theme="classic"],
+   so the text-mode themes in themes.css are not affected.
+
+   Pixel rules:
+   - Pixel fonts stay sharp only on their own grid: Pixel Operator (and Bold,
+     Mono) at 16px, Pixel Operator 8 at 8, 16 or 24px. Sizes come from the
+     variables below (--fs, --lh, --fs-title...), so a font choice in
+     Settings (data-classic-font) can bring its own grid: Dogica is an 8 px
+     font (text at 8 px, titles at 16 px); Geist Pixel and Roboto Slab are
+     drawn smoothly at 14 px.
+   - Line heights are whole, even pixel values (20px body text), so glyphs
+     never sit on half pixels.
+   - Static only: no transitions, no animation, and no filters or overlays on
+     the scrolling game grid (see themes.css for the measurements). */
+
+@font-face { font-family: "Pixel Operator"; src: url("../fonts/pixel-operator.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Pixel Operator"; src: url("../fonts/pixel-operator-bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: block; }
+@font-face { font-family: "Pixel Operator Mono"; src: url("../fonts/pixel-operator-mono.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Pixel Operator 8"; src: url("../fonts/pixel-operator-8.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Pixel Operator 8"; src: url("../fonts/pixel-operator-8-bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: block; }
+/* font choices for the Classic look (loaded only when chosen) */
+@font-face { font-family: "Dogica Pixel"; src: url("../fonts/dogicapixel.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Dogica Pixel"; src: url("../fonts/dogicapixelbold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: block; }
+@font-face { font-family: "Dogica"; src: url("../fonts/dogica.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "GC Pixel Symbols 8"; src: url("../fonts/gc-pixel-symbols-8.woff2") format("woff2"); font-display: block; }
+@font-face { font-family: "Geist Pixel"; src: url("../fonts/geist-pixel.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "Roboto Slab"; src: url("../fonts/roboto-slab.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
+
+html[data-theme="classic"] {
+  --ui-font: "Pixel Operator", Tahoma, Verdana, sans-serif;
+  --title-font: var(--ui-font);
+  --logo-font: "Pixel Operator 8", "Pixel Operator", sans-serif;
+  --px8: "Pixel Operator 8", "Pixel Operator", sans-serif;
+  --mono-font: "Pixel Operator Mono", Consolas, "Lucida Console", monospace;
+  --bevel-hi: #4b3d66;
+  --bevel-lo: #050408;
+  --well: #08070c;          /* sunken fields, wells */
+  --stripe: #4a3670;        /* title-bar pinstripes */
+  --accent-lo: #3b2560;     /* dark edge of violet buttons */
+  --accent-top: #cdb3f5;    /* light edge of violet buttons */
+  /* body text in a light grey rather than white: easier on the eyes */
+  --text: #c3bfcb;
+  /* type sizes (Pixel Operator grid); a font choice below brings its own */
+  --fs: 16px;        /* text */
+  --lh: 20px;        /* lines */
+  --lh-tight: 16px;  /* small buttons */
+  --lh-card: 18px;   /* card titles, chips */
+  --lh-read: 22px;   /* longer reading (About, welcome) */
+  --fs-title: 16px;  /* titles in --px8 (Pixel Operator 8 at 2x) */
+  --fs-big: 24px;    /* the About title (3x) */
+  --fs-small: 8px;   /* badges, table headers */
+  --fs-mono: 16px;   /* paths */
+  /* the pixel font has no italic and no synthetic bold/italic is wanted */
+  font-synthesis: none;
+}
+
+/* ---------- font choices (Settings > Appearance > Classic font) ---------- */
+/* Dogica Pixel (Roberto Mocci, OFL): an 8 px font - text at 8 px, titles at
+   16 px. It has no Czech letters with caron/ring: those come from Pixel
+   Operator 8 on the same grid; interface symbols from GC Pixel Symbols 8. */
+html[data-theme="classic"][data-classic-font="dogica"] {
+  --ui-font: "Dogica Pixel", "GC Pixel Symbols 8", "Pixel Operator 8", sans-serif;
+  --px8: var(--ui-font);
+  --mono-font: "Dogica", "GC Pixel Symbols 8", "Pixel Operator 8", monospace;
+  --fs: 8px; --lh: 16px; --lh-tight: 12px; --lh-card: 12px; --lh-read: 16px;
+  --fs-title: 16px; --fs-big: 24px; --fs-small: 8px; --fs-mono: 8px;
+}
+/* Geist Pixel (Vercel, OFL): a fine pixel design, drawn smoothly at 14 px */
+html[data-theme="classic"][data-classic-font="geist-pixel"] {
+  --ui-font: "Geist Pixel", "Segoe UI Symbol", "Pixel Operator", sans-serif;
+  --px8: var(--ui-font);
+  --mono-font: var(--ui-font);
+  --fs: 14px; --lh: 20px; --lh-tight: 16px; --lh-card: 18px; --lh-read: 22px;
+  --fs-title: 18px; --fs-big: 28px; --fs-small: 11px; --fs-mono: 14px;
+}
+/* Roboto Slab (Apache 2.0): a calm slab serif for long reading */
+html[data-theme="classic"][data-classic-font="roboto-slab"] {
+  --ui-font: "Roboto Slab", "Segoe UI Symbol", Georgia, serif;
+  --px8: var(--ui-font);
+  --mono-font: Consolas, "Cascadia Mono", "Lucida Console", monospace;
+  --fs: 14px; --lh: 20px; --lh-tight: 16px; --lh-card: 18px; --lh-read: 22px;
+  --fs-title: 17px; --fs-big: 28px; --fs-small: 11px; --fs-mono: 13px;
+}
+html[data-theme="classic"] body { font: var(--fs)/var(--lh) var(--ui-font); letter-spacing: 0; -webkit-font-smoothing: none; }
+html[data-theme="classic"] em, html[data-theme="classic"] i { font-style: normal; color: var(--accent-hi); }
+
+/* Headings, bold text and game titles in orange, so they stand out from the
+   white body text; titles of games installed on this PC in green. Panel bars,
+   group boxes and table headers stay violet (the frame of the window). */
+html[data-theme="classic"] {
+  --heading: #f4a35a;
+  --installed: #8fd49a;
+}
+html[data-theme="classic"] :is(b, strong),
+html[data-theme="classic"] :is(.profile-head h1, .about h1, .welcome h1, .empty h2, .wizard-page h2, .rich h2, .rich h3,
+  .entry-title, .jgroup-title, .about h2, .theme-name, .font-name, .game-title) { color: var(--heading); }
+html[data-theme="classic"] .game-title.inst { color: var(--installed); }
+/* inside buttons, bars and badges bold text keeps their colour */
+html[data-theme="classic"] :is(.btn, .strip, .window-title, .badge, .nav button, .wizard-steps li, .notice.err, .toast) :is(b, strong) { color: inherit; }
+html[data-theme="classic"] :focus-visible:not(.field):not(.editor):not(input) { outline: 1px dotted var(--accent-hi); outline-offset: 1px; }
+
+/* ---------- scrollbars: dithered track, bevelled thumb ---------- */
+html[data-theme="classic"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+html[data-theme="classic"] ::-webkit-scrollbar-track { background: repeating-conic-gradient(#1d1729 0 25%, var(--well) 0 50%) 0 0 / 2px 2px; }
+html[data-theme="classic"] ::-webkit-scrollbar-thumb {
+  border-radius: 0; background: var(--surface-3); border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+}
+html[data-theme="classic"] ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+html[data-theme="classic"] ::-webkit-scrollbar-corner { background: var(--well); }
+
+/* ---------- frames: 2px bevel + 1px black outline ---------- */
+html[data-theme="classic"] .bevel-out {
+  border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); box-shadow: 0 0 0 1px #000;
+}
+html[data-theme="classic"] .bevel-in { border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+html[data-theme="classic"] .main-row { gap: 8px; padding: 7px 7px 5px; }
+
+/* ---------- sidebar: title-screen logo, game-menu navigation ---------- */
+html[data-theme="classic"] .sidebar {
+  /* 256-colour "copper" bands behind the bottom of the menu */
+  background:
+    linear-gradient(to bottom, transparent 0 4px, #17131f 4px 8px, transparent 8px 12px, #1a1523 12px 18px, transparent 18px 22px,
+      #1d1728 22px 30px, #201a2e 30px 40px, #241d34 40px 52px, #281f3a 52px 66px, #2c2241 66px) left bottom / 100% 120px no-repeat,
+    var(--surface);
+}
+html[data-theme="classic"] .logo {
+  display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 10px 10px;
+  padding: 14px 10px 10px; border-bottom: 2px solid var(--bevel-lo); box-shadow: 0 1px 0 var(--bevel-hi);
+}
+html[data-theme="classic"] .logo > div { display: contents; }
+html[data-theme="classic"] .logo-mark {
+  grid-row: 1; width: 32px; height: 32px; background: var(--accent-hi);
+  -webkit-mask: url("../img/shelf-px.svg") center / 32px 32px no-repeat; mask: url("../img/shelf-px.svg") center / 32px 32px no-repeat;
+}
+html[data-theme="classic"] .logo-text {
+  grid-column: 2; width: min-content; white-space: normal;
+  font: bold 16px/16px var(--logo-font); font-style: normal; letter-spacing: 0; text-transform: uppercase;
+  /* two-tone "chrome" lettering, the same bands on each 16px line */
+  background: linear-gradient(to bottom, #ffffff 0 6px, #ddccfb 6px 8px, var(--accent-hi) 8px 12px, var(--accent) 12px 16px) 0 0 / 100% 16px repeat-y;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(2px 2px 0 #000);
+}
+html[data-theme="classic"] .logo-sub {
+  grid-column: 1 / -1; margin: 0; font: 8px/8px var(--logo-font); letter-spacing: 0; text-transform: uppercase; color: var(--muted);
+}
+html[data-theme="classic"] .nav { gap: 4px; padding: 12px 8px; }
+html[data-theme="classic"] .nav button {
+  gap: 10px; padding: 4px 8px; font: var(--fs)/var(--lh) var(--ui-font); color: var(--muted);
+  border: 2px solid transparent; border-left-width: 2px;
+}
+html[data-theme="classic"] .nav button svg { width: 24px; height: 24px; stroke-width: 1.6; shape-rendering: crispEdges; }
+html[data-theme="classic"] .nav button:hover { color: var(--text); background: var(--surface-2); border-color: var(--line); }
+html[data-theme="classic"] .nav button.active {
+  color: #fff; background: var(--accent); border-color: var(--accent-top) var(--accent-lo) var(--accent-lo) var(--accent-top);
+  box-shadow: 0 0 0 1px #000; text-shadow: 1px 1px 0 var(--accent-lo);
+}
+html[data-theme="classic"] .nav button.active svg { color: #fff; }
+/* the menu cursor of a game's main menu */
+html[data-theme="classic"] .nav button.active::after { content: "\25C4"; margin-left: auto; color: #fff; }
+
+/* ---------- panels: striped title bars ---------- */
+html[data-theme="classic"] .panel > .strip, html[data-theme="classic"] .strip {
+  gap: 8px; padding: 4px 8px; min-height: 30px;
+  font: bold var(--fs)/var(--lh) var(--ui-font); letter-spacing: 1px; text-transform: uppercase; color: var(--accent-hi);
+  background: var(--surface-2); border-bottom: 2px solid var(--bevel-lo); box-shadow: inset 0 1px 0 var(--bevel-hi);
+}
+html[data-theme="classic"] .strip .count { color: var(--muted); font-weight: normal; letter-spacing: 0; }
+/* pinstripes in the empty part of the bar (the spacer, or after the title) */
+html[data-theme="classic"] .strip .spacer,
+html[data-theme="classic"] .strip:not(:has(> .spacer))::after {
+  flex: 1; align-self: center; height: 10px; min-width: 16px;
+  background: repeating-linear-gradient(to bottom, var(--stripe) 0 1px, transparent 1px 2px);
+}
+html[data-theme="classic"] .strip:not(:has(> .spacer))::after { content: ""; margin-left: 4px; }
+html[data-theme="classic"] .panel-body { padding: 10px 12px; }
+
+/* ---------- toolbar ---------- */
+html[data-theme="classic"] .toolbar { gap: 8px; padding: 8px 10px; border-bottom: 2px solid var(--bevel-lo); box-shadow: 0 1px 0 var(--bevel-hi); }
+html[data-theme="classic"] .toolbar .sep { width: 2px; background: var(--bevel-lo); box-shadow: 1px 0 0 var(--bevel-hi); margin: 0 6px; }
+
+/* ---------- buttons ---------- */
+html[data-theme="classic"] .btn {
+  gap: 6px; padding: 2px 12px; min-height: 28px; font: var(--fs)/var(--lh) var(--ui-font);
+  background: var(--surface-2); border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+  box-shadow: 0 0 0 1px #000;
+}
+html[data-theme="classic"] .btn:hover { background: var(--surface-3); }
+html[data-theme="classic"] .btn:active:not(:disabled), html[data-theme="classic"] .btn.pressed {
+  background: var(--well); border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); padding: 3px 11px 1px 13px;
+}
+html[data-theme="classic"] .btn.pressed { color: var(--accent-hi); }
+html[data-theme="classic"] .btn:disabled { color: var(--faint); background: var(--surface); border-color: var(--line); }
+html[data-theme="classic"] .btn.gold {
+  color: #fff; background: var(--accent); border-color: var(--accent-top) var(--accent-lo) var(--accent-lo) var(--accent-top);
+  text-shadow: 1px 1px 0 var(--accent-lo);
+}
+html[data-theme="classic"] .btn.gold:hover { background: #9a6bd6; }
+html[data-theme="classic"] .btn.gold:active:not(:disabled) { background: #7a4db5; border-color: var(--accent-lo) var(--accent-top) var(--accent-top) var(--accent-lo); }
+html[data-theme="classic"] .btn.gold:disabled { color: #a99dbc; background: var(--accent-dim); border-color: #57447a #241a36 #241a36 #57447a; text-shadow: none; }
+html[data-theme="classic"] .btn.small { padding: 1px 8px; min-height: 24px; font-size: var(--fs); line-height: var(--lh-tight); }
+html[data-theme="classic"] .btn.small:active:not(:disabled), html[data-theme="classic"] .btn.small.pressed { padding: 2px 7px 0 9px; }
+html[data-theme="classic"] .btn.icon { padding: 1px 7px; }
+/* buttons in a group share one black line between them */
+html[data-theme="classic"] .btn-group .btn + .btn { margin-left: 1px; }
+
+/* ---------- fields ---------- */
+html[data-theme="classic"] .field, html[data-theme="classic"] select.field, html[data-theme="classic"] textarea.field {
+  font: var(--fs)/var(--lh) var(--ui-font); padding: 2px 6px; min-height: 28px; background-color: var(--well); caret-color: var(--accent-hi);
+  border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+html[data-theme="classic"] .field:focus { border-color: var(--bevel-lo) var(--accent) var(--accent) var(--bevel-lo); background-color: #0c0a12; }
+html[data-theme="classic"] select.field {
+  padding-right: 26px;
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 4" shape-rendering="crispEdges"><path fill="%23b598e6" d="M0 0h7v1h-7zM1 1h5v1h-5zM2 2h3v1h-3zM3 3h1v1h-1z"/></svg>');
+  background-position: right 8px center; background-size: 7px 4px; background-repeat: no-repeat;
+}
+html[data-theme="classic"] textarea.field { line-height: var(--lh); }
+html[data-theme="classic"] label.check { gap: 8px; }
+
+/* pixel check boxes and radio buttons */
+html[data-theme="classic"] input[type=checkbox] {
+  -webkit-appearance: none; appearance: none; flex: none; width: 16px; height: 16px; margin: 0 2px 0 0; cursor: pointer; vertical-align: -3px;
+  background: var(--well) 0 0 / 12px 12px no-repeat; border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+html[data-theme="classic"] input[type=checkbox]:checked {
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" shape-rendering="crispEdges"><path fill="%23b598e6" d="M9 2h2v1h-2zM8 3h3v1h-3zM1 4h2v1h-2zM7 4h3v1h-3zM1 5h3v1h-3zM6 5h3v1h-3zM2 6h6v1h-6zM3 7h4v1h-4zM4 8h2v1h-2z"/></svg>');
+}
+html[data-theme="classic"] input[type=radio] {
+  -webkit-appearance: none; appearance: none; flex: none; width: 16px; height: 16px; margin: 0 2px 0 0; cursor: pointer; vertical-align: -3px; border: 0;
+  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><path fill="%23050408" d="M5 0h6v1h-6zM3 1h2v1h-2zM11 1h2v1h-2zM2 2h1v1h-1zM1 3h1v1h-1zM1 4h1v1h-1zM0 5h1v1h-1zM0 6h1v1h-1zM0 7h1v1h-1zM0 8h1v1h-1zM0 9h1v1h-1zM0 10h1v1h-1zM1 11h1v1h-1zM1 12h1v1h-1z"/><path fill="%2308070c" d="M5 1h6v1h-6zM3 2h10v1h-10zM2 3h12v1h-12zM2 4h12v1h-12zM1 5h14v1h-14zM1 6h14v1h-14zM1 7h14v1h-14zM1 8h14v1h-14zM1 9h14v1h-14zM1 10h14v1h-14zM2 11h12v1h-12zM2 12h12v1h-12zM3 13h10v1h-10zM5 14h6v1h-6z"/><path fill="%234b3d66" d="M13 2h1v1h-1zM14 3h1v1h-1zM14 4h1v1h-1zM15 5h1v1h-1zM15 6h1v1h-1zM15 7h1v1h-1zM15 8h1v1h-1zM15 9h1v1h-1zM15 10h1v1h-1zM14 11h1v1h-1zM14 12h1v1h-1zM2 13h1v1h-1zM13 13h1v1h-1zM3 14h2v1h-2zM11 14h2v1h-2zM5 15h6v1h-6z"/></svg>') 0 0 / 16px 16px no-repeat;
+}
+html[data-theme="classic"] input[type=radio]:checked {
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><path fill="%23050408" d="M5 0h6v1h-6zM3 1h2v1h-2zM11 1h2v1h-2zM2 2h1v1h-1zM1 3h1v1h-1zM1 4h1v1h-1zM0 5h1v1h-1zM0 6h1v1h-1zM0 7h1v1h-1zM0 8h1v1h-1zM0 9h1v1h-1zM0 10h1v1h-1zM1 11h1v1h-1zM1 12h1v1h-1z"/><path fill="%2308070c" d="M5 1h6v1h-6zM3 2h10v1h-10zM2 3h12v1h-12zM2 4h12v1h-12zM1 5h5v1h-5zM10 5h5v1h-5zM1 6h4v1h-4zM11 6h4v1h-4zM1 7h4v1h-4zM11 7h4v1h-4zM1 8h4v1h-4zM11 8h4v1h-4zM1 9h4v1h-4zM11 9h4v1h-4zM1 10h5v1h-5zM10 10h5v1h-5zM2 11h12v1h-12zM2 12h12v1h-12zM3 13h10v1h-10zM5 14h6v1h-6z"/><path fill="%234b3d66" d="M13 2h1v1h-1zM14 3h1v1h-1zM14 4h1v1h-1zM15 5h1v1h-1zM15 6h1v1h-1zM15 7h1v1h-1zM15 8h1v1h-1zM15 9h1v1h-1zM15 10h1v1h-1zM14 11h1v1h-1zM14 12h1v1h-1zM2 13h1v1h-1zM13 13h1v1h-1zM3 14h2v1h-2zM11 14h2v1h-2zM5 15h6v1h-6z"/><path fill="%23b598e6" d="M6 5h4v1h-4zM5 6h6v1h-6zM5 7h6v1h-6zM5 8h6v1h-6zM5 9h6v1h-6zM6 10h4v1h-4z"/></svg>');
+}
+html[data-theme="classic"] input[type=checkbox]:focus-visible, html[data-theme="classic"] input[type=radio]:focus-visible { outline: 1px dotted var(--accent-hi); outline-offset: 2px; }
+html[data-theme="classic"] input[type=checkbox]:disabled, html[data-theme="classic"] input[type=radio]:disabled { opacity: .45; cursor: default; }
+/* the theme picker hides its radio buttons */
+html[data-theme="classic"] .theme-option input { position: absolute; opacity: 0; }
+
+/* sliders (artwork zoom) */
+html[data-theme="classic"] input[type=range] { -webkit-appearance: none; appearance: none; height: 20px; background: transparent; cursor: pointer; }
+html[data-theme="classic"] input[type=range]:focus { outline: none; }
+html[data-theme="classic"] input[type=range]:focus-visible { outline: 1px dotted var(--accent-hi); outline-offset: 2px; }
+html[data-theme="classic"] input[type=range]::-webkit-slider-runnable-track {
+  height: 8px; background: var(--well); border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+html[data-theme="classic"] input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 12px; height: 20px; margin-top: -8px; background: var(--accent);
+  border: 2px solid; border-color: var(--accent-top) var(--accent-lo) var(--accent-lo) var(--accent-top); box-shadow: 0 0 0 1px #000;
+}
+
+/* group boxes: an etched line, like the setup programs of the time */
+html[data-theme="classic"] fieldset.group { border: 1px solid var(--bevel-lo); box-shadow: inset 1px 1px 0 var(--bevel-hi), 1px 1px 0 var(--bevel-hi); padding: 10px 14px 14px; }
+html[data-theme="classic"] fieldset.group legend { padding: 0 6px; font: bold var(--fs)/var(--lh) var(--ui-font); letter-spacing: 1px; color: var(--accent-hi); }
+html[data-theme="classic"] .hint, html[data-theme="classic"] .warn-text { font-size: var(--fs); }
+html[data-theme="classic"] .mono, html[data-theme="classic"] .mono.small { font: var(--fs-mono)/var(--lh) var(--mono-font); }
+/* file names in the archive table and folders in the scanner: the
+   proportional pixel font is narrower, so long names wrap less often */
+html[data-theme="classic"] table.files td.mono, html[data-theme="classic"] .mono.small { font-family: var(--ui-font); }
+
+/* ---------- LEDs, badges, chips ---------- */
+html[data-theme="classic"] .led { width: 8px; height: 8px; border-radius: 0; box-shadow: inset -2px -2px 0 rgba(0, 0, 0, .4), 0 0 0 1px #000; vertical-align: 1px; }
+html[data-theme="classic"] .badge { padding: 1px 4px; font: var(--fs-small)/10px var(--px8); letter-spacing: 0; }
+html[data-theme="classic"] .chip { padding: 0 6px; font-size: var(--fs); line-height: var(--lh-card); border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); }
+
+/* ---------- library grid ---------- */
+html[data-theme="classic"] .library-scroll { padding: 14px 16px; }
+html[data-theme="classic"] .grid { gap: 18px; }
+html[data-theme="classic"] .card {
+  border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); box-shadow: 0 0 0 1px #000;
+  contain-intrinsic-size: var(--card-w) calc(var(--card-w) * 1.33 + 76px);
+}
+/* the card lifts like a selected box on a shelf: hard shadow, no blur */
+html[data-theme="classic"] .card:hover, html[data-theme="classic"] .card:focus-visible {
+  border-color: var(--accent-top) var(--accent-lo) var(--accent-lo) var(--accent-top); outline: none;
+  box-shadow: 0 0 0 1px #000, 4px 4px 0 1px #000; transform: translate(-2px, -2px);
+}
+html[data-theme="classic"] .card .meta { padding: 6px 8px 7px; min-height: 62px; border-top: 2px solid var(--bevel-lo); }
+html[data-theme="classic"] .card .t { font: bold var(--fs)/var(--lh-card) var(--ui-font); }
+html[data-theme="classic"] .card .s { margin-top: 4px; font-size: var(--fs); line-height: var(--lh-card); }
+html[data-theme="classic"] .cover .ph { font: bold var(--fs-title)/var(--fs-title) var(--px8); letter-spacing: 0; padding-bottom: 18%; }
+/* the placeholder box at a whole 3x scale of its 18x17 pixel grid */
+html[data-theme="classic"] .cover .ph::before {
+  left: 50%; right: auto; top: 22%; width: 54px; height: 51px; margin-left: -27px;
+  -webkit-mask: url("../img/box-px.svg") 0 0 / 54px 51px no-repeat; mask: url("../img/box-px.svg") 0 0 / 54px 51px no-repeat;
+}
+
+/* ---------- tables ---------- */
+html[data-theme="classic"] table.list th {
+  padding: 6px 8px; font: bold var(--fs-small)/12px var(--px8); letter-spacing: 1px; color: var(--accent-hi);
+  background: var(--surface-2); border-bottom: 2px solid var(--bevel-lo);
+}
+html[data-theme="classic"] table.list td { padding: 3px 8px; border-bottom: 1px solid #1f1a2b; }
+html[data-theme="classic"] table.list tbody tr.click:hover td { background: var(--accent-dim); }
+html[data-theme="classic"] table.files tr.group th { padding-top: 12px; border-bottom: 2px solid var(--line); }
+html[data-theme="classic"] table.files tr.group th .n { color: var(--muted); }
+html[data-theme="classic"] select.cat-select { min-height: 24px; padding: 0 22px 0 6px; font-size: var(--fs); line-height: var(--lh-card); width: 140px; border-color: transparent; background-color: transparent; }
+html[data-theme="classic"] select.cat-select:hover, html[data-theme="classic"] select.cat-select:focus { border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); background-color: var(--well); }
+html[data-theme="classic"] .primary-btn { font-size: var(--fs); line-height: var(--lh-tight); }
+
+/* ---------- empty state ---------- */
+html[data-theme="classic"] .empty h2 { font: bold var(--fs-title)/var(--lh) var(--px8); font-style: normal; }
+
+/* ---------- headings: chunky title lettering (Pixel Operator 8 at 2x) ---------- */
+html[data-theme="classic"] .profile-head { gap: 10px; padding: 8px 12px; border-bottom: 2px solid var(--bevel-lo); box-shadow: 0 1px 0 var(--bevel-hi); }
+html[data-theme="classic"] .profile-head h1 { font: bold var(--fs-title)/var(--lh) var(--px8); font-style: normal; text-shadow: 2px 2px 0 #000; }
+html[data-theme="classic"] .wizard-page h2,
+html[data-theme="classic"] .jgroup-title { font: bold var(--fs-title)/var(--lh) var(--px8); font-style: normal; }
+html[data-theme="classic"] .rich h2 { font: bold var(--fs-title)/var(--lh) var(--px8); margin: 12px 0 4px; }
+html[data-theme="classic"] .rich h3 { font: bold var(--fs)/var(--lh) var(--ui-font); }
+html[data-theme="classic"] .rich blockquote { font-style: normal; border-left: 4px solid var(--accent-dim); }
+
+/* ---------- profile ---------- */
+html[data-theme="classic"] .game-info .cover-big { border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+html[data-theme="classic"] .desc { line-height: var(--lh); }
+html[data-theme="classic"] .pathline { border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); background: var(--well); }
+html[data-theme="classic"] .pf-split > span { width: 4px; left: 5px; background: conic-gradient(var(--muted) 25%, transparent 0) 0 0 / 4px 4px; }
+html[data-theme="classic"] .notice { border-width: 1px 1px 1px 4px; }
+html[data-theme="classic"] .install-row { border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); background: var(--well); }
+html[data-theme="classic"] .install-row .path { font-size: var(--fs); line-height: var(--lh); }
+html[data-theme="classic"] .inst-box svg, html[data-theme="classic"] .nav button svg { shape-rendering: crispEdges; }
+
+/* ---------- journal ---------- */
+html[data-theme="classic"] .entries { gap: 12px; }
+html[data-theme="classic"] .entry { border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); box-shadow: 0 0 0 1px #000; }
+html[data-theme="classic"] .entry-head { padding: 4px 10px; background: var(--surface-2); border-bottom: 2px solid var(--bevel-lo); }
+html[data-theme="classic"] .entry-date { font: var(--fs-mono)/var(--lh) var(--mono-font); }
+html[data-theme="classic"] .entry-title { font: bold var(--fs)/var(--lh) var(--ui-font); }
+html[data-theme="classic"] .entry-game { font-size: var(--fs); }
+html[data-theme="classic"] .entry.compact .entry-body { max-height: 60px; }
+html[data-theme="classic"] .editor-toolbar { gap: 4px; padding: 4px; border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); border-bottom: 0; }
+html[data-theme="classic"] .editor-toolbar .btn { min-width: 30px; padding: 1px 7px; min-height: 24px; font-size: var(--fs); line-height: var(--lh-tight); }
+html[data-theme="classic"] .editor { line-height: var(--lh); background: var(--well); caret-color: var(--accent-hi); border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+html[data-theme="classic"] .editor:focus { border-color: var(--bevel-lo) var(--accent) var(--accent) var(--bevel-lo); }
+html[data-theme="classic"] .jgroup-head { border-bottom: 2px solid var(--line); }
+html[data-theme="classic"] .jgroup-cover { border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); }
+
+/* ---------- scanner: block progress bar ---------- */
+html[data-theme="classic"] .progress { height: 20px; gap: 2px; padding: 2px; background: var(--well); border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+html[data-theme="classic"] .progress i { background: transparent; }
+html[data-theme="classic"] .progress i.on { background: var(--accent); box-shadow: inset 1px 1px 0 var(--accent-top), inset -1px -1px 0 var(--accent-lo); }
+html[data-theme="classic"] .scan-status, html[data-theme="classic"] .cand-files { font-size: var(--fs); }
+html[data-theme="classic"] .sticky-actions { border-top: 2px solid var(--bevel-lo); }
+html[data-theme="classic"] .backup-list { border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); background: var(--well); }
+
+/* ---------- status bar: sunken panels ---------- */
+html[data-theme="classic"] .statusbar { gap: 4px; padding: 3px 7px 5px; font-size: var(--fs); line-height: var(--lh); border-top: 2px solid var(--bevel-hi); background: var(--surface); }
+html[data-theme="classic"] .statusbar > div,
+html[data-theme="classic"] .statusbar > div + div { padding: 0 8px; background: var(--well); border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+html[data-theme="classic"] .statusbar .sb-archive.bad { background: #7c3030; }
+
+/* ---------- windows: violet title bar, hard drop shadow ---------- */
+html[data-theme="classic"] .overlay { background: repeating-conic-gradient(rgba(0, 0, 0, .55) 0 25%, rgba(4, 3, 7, .85) 0 50%) 0 0 / 2px 2px; }
+html[data-theme="classic"] .window {
+  border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+  box-shadow: 0 0 0 1px #000, 8px 8px 0 1px rgba(0, 0, 0, .8);
+}
+html[data-theme="classic"] .window-title {
+  gap: 8px; padding: 3px 4px 3px 10px; font: bold var(--fs)/var(--lh) var(--ui-font); color: #fff; text-shadow: 1px 1px 0 var(--accent-lo);
+  background: var(--accent); border-bottom: 2px solid #000;
+}
+html[data-theme="classic"] .window-title .spacer { align-self: center; height: 10px; background: repeating-linear-gradient(to bottom, #5d3d91 0 1px, transparent 1px 2px); }
+html[data-theme="classic"] .window-title .x { width: 24px; height: 22px; min-height: 0; padding: 0; font-size: var(--fs); line-height: var(--lh-tight); text-shadow: none; color: var(--text); }
+html[data-theme="classic"] .window-foot { border-top: 2px solid var(--bevel-lo); box-shadow: inset 0 1px 0 var(--bevel-hi); }
+html[data-theme="classic"] .dlg-icon {
+  width: 36px; height: 36px; font: bold var(--fs-title)/var(--fs-title) var(--px8);
+  border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); box-shadow: 0 0 0 1px #000;
+}
+
+/* ---------- wizard ---------- */
+html[data-theme="classic"] .wizard-steps { background: var(--well); border-right: 2px solid var(--bevel-lo); }
+html[data-theme="classic"] .wizard-steps li { padding: 6px 16px; }
+html[data-theme="classic"] .wizard-steps li.current { color: #fff; background: var(--accent); border-left: 0; padding-left: 16px; text-shadow: 1px 1px 0 var(--accent-lo); }
+html[data-theme="classic"] .wizard-steps li.current::after { content: " \25C4"; }
+
+/* ---------- toast ---------- */
+html[data-theme="classic"] .toast {
+  border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); border-left: 6px solid var(--accent);
+  box-shadow: 0 0 0 1px #000, 6px 6px 0 1px rgba(0, 0, 0, .75);
+}
+html[data-theme="classic"] .toast.err { border-left-color: var(--danger); }
+
+/* ---------- about, welcome ---------- */
+html[data-theme="classic"] .about-mark, html[data-theme="classic"] .welcome-mark {
+  -webkit-mask-image: url("../img/shelf-px.svg"); mask-image: url("../img/shelf-px.svg");
+}
+html[data-theme="classic"] .about-mark { width: 64px; height: 64px; margin: 14px 0 14px; }
+html[data-theme="classic"] .welcome-mark { width: 48px; height: 48px; margin: 2px 0 12px; }
+html[data-theme="classic"] .about h1 { font: bold var(--fs-big)/var(--fs-big) var(--px8); font-style: normal; margin: 0 0 8px; text-shadow: 3px 3px 0 #000; }
+html[data-theme="classic"] .welcome h1 { font: bold var(--fs-title)/var(--lh) var(--px8); font-style: normal; margin: 0 0 12px; text-shadow: 2px 2px 0 #000; }
+html[data-theme="classic"] .about .motto, html[data-theme="classic"] .welcome .welcome-motto { font: var(--fs)/var(--lh) var(--ui-font); }
+html[data-theme="classic"] .about p, html[data-theme="classic"] .welcome p { line-height: var(--lh-read); }
+html[data-theme="classic"] .about h2 { font: bold var(--fs)/var(--lh) var(--ui-font); letter-spacing: 1px; }
+html[data-theme="classic"] .about ul.principles li { border-left: 4px solid var(--accent-dim); padding-left: 12px; }
+html[data-theme="classic"] .about .about-quote { font: var(--fs)/var(--lh-read) var(--ui-font); border-left: 4px solid var(--accent); }
+html[data-theme="classic"] .welcome .welcome-motto { border-left: 4px solid var(--accent); }
+
+/* ---------- screenshots ---------- */
+html[data-theme="classic"] .shot, html[data-theme="classic"] .gal-thumb, html[data-theme="classic"] .gal-pic {
+  border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+html[data-theme="classic"] .shot img { transition: none; }
+html[data-theme="classic"] .shot:hover img { transform: none; }
+html[data-theme="classic"] .shot:hover, html[data-theme="classic"] .shot:focus-visible,
+html[data-theme="classic"] .gal-item:hover .gal-thumb, html[data-theme="classic"] .gal-item:focus-visible .gal-thumb { border-color: var(--accent-hi); }
+html[data-theme="classic"] .shot.more { font: bold var(--fs-title)/var(--fs-title) var(--px8); }
+html[data-theme="classic"] .shot-x { width: 20px; height: 20px; font-size: var(--fs); line-height: var(--lh-tight); border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); background: var(--surface-2); }
+html[data-theme="classic"] .shot-prompt { font-style: normal; }
+html[data-theme="classic"] .shot-prompt.small { font-size: var(--fs); }
+html[data-theme="classic"] .gal-cap { font-size: var(--fs); }
+html[data-theme="classic"] .gal-badge { padding: 1px 4px; font: var(--fs-small)/10px var(--px8); letter-spacing: 0; }
+html[data-theme="classic"] .gal-nav { font: bold 32px/32px "Pixel Operator", sans-serif; }
+
+/* ---------- additional files ---------- */
+html[data-theme="classic"] .add-note, html[data-theme="classic"] .add-where { font-size: var(--fs); line-height: var(--lh); }
+html[data-theme="classic"] .add-kind { min-width: 52px; padding: 2px 4px; font: var(--fs-small)/10px var(--px8); letter-spacing: 0; }
+html[data-theme="classic"] .add-file { border: 2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); background: var(--well); }
+
+/* ---------- files dragged from Explorer ---------- */
+html[data-theme="classic"] [data-dropzone].drop-over::after { font: bold var(--fs)/var(--lh) var(--ui-font); background: repeating-conic-gradient(rgba(13, 11, 18, .7) 0 25%, rgba(13, 11, 18, .92) 0 50%) 0 0 / 2px 2px; }

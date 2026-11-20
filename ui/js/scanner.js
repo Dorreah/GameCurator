@@ -102,7 +102,7 @@ function renderResults() {
         <td><input class="field cand-small" data-year="${i}" type="number" min="1940" max="2100" value="${esc(r.year)}" ${dis ? 'disabled' : ''}></td>
         <td><input class="field cand-genre" data-genre="${i}" value="${esc(r.genre)}" ${dis ? 'disabled' : ''} list="sc-genres"></td>
         <td>${r.art ? `<img class="thumb-mini" src="${esc(imgSrc(r.art.thumbnailPath))}" alt=""> ` : ''}${dis ? '' : `<button class="btn small" data-art="${i}">${r.art ? 'Change' : 'Add…'}</button>`}</td>
-        <td><div class="mono" style="font-size:11px">${esc(r.cand.folderPath)}</div><div class="cand-files">${summary(r.cand)}</div></td>
+        <td><div class="mono small">${esc(r.cand.folderPath)}</div><div class="cand-files">${summary(r.cand)}</div></td>
         <td>${statusCell(r.cand)}</td></tr>`;
     }).join('')}</tbody></table>
     <datalist id="sc-genres">${(state.facets ? state.facets.genres : []).map((g) => `<option value="${esc(g.name)}">`).join('')}</datalist>

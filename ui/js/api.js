@@ -70,6 +70,8 @@ export const api = {
 
   archiveContent: (gameId) => call('archive_content', { gameId }),
   setFileCategory: (gameId, fileId, category) => call('set_file_category', { gameId, fileId, category }),
+  setFileDisplayName: (gameId, fileId, name) => call('set_file_display_name', { gameId, fileId, name }),
+  runningGames: () => call('running_games'),
   setPrimaryFile: (gameId, fileId) => call('set_primary_file', { gameId, fileId }),
   openFile: (gameId, fileId) => call('open_file', { gameId, fileId }),
   runFile: (gameId, fileId) => call('run_file', { gameId, fileId, confirmed: true }),

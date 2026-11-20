@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { esc, formatBytes, toast, confirmBox, openModal, guard } from './ui.js';
+import { openHint } from './store.js';
 
 export const ADDITIONS_DROP_HINT = 'Drop files here to add them to the game';
 
@@ -25,15 +26,17 @@ function row(a) {
   else if (!a.portable) where += ' <span class="faint" title="Outside the archive: on another computer it may not be available">· this PC</span>';
   const open = a.runnable
     ? `<button class="btn small" data-add-run="${a.id}" ${a.exists ? '' : 'disabled'} title="Start the program (asks first)">▶ Run</button>`
-    : (a.risky ? '' : `<button class="btn small" data-add-open="${a.id}" ${a.exists ? '' : 'disabled'}>Open</button>`);
+    : (a.risky ? '' : `<button class="btn small" data-add-open="${a.id}" ${a.exists ? '' : 'disabled'} title="${esc(openHint(a.filename))}">Open</button>`);
   return `<tr class="${a.exists ? '' : 'missing'}">
     <td class="kind"><span class="add-kind k-${esc(a.category)}">${esc(KIND_LABEL[a.category] || a.category)}</span></td>
-    <td class="name"><div class="mono" title="${esc(a.location)}">${esc(a.filename)}</div>
+    <td class="name">${a.displayName
+      ? `<div class="fname renamed" title="${esc(`${a.displayName}\nFile: ${a.location}`)}">${esc(a.displayName)}</div>`
+      : `<div class="mono fname" title="${esc(a.location)}">${esc(a.filename)}</div>`}
       ${a.note ? `<div class="add-note">${esc(a.note)}</div>` : ''}<div class="add-where">${where}</div></td>
     <td class="num">${formatBytes(a.sizeBytes)}</td>
     <td class="act">${open}
+      <button class="btn small icon" data-add-edit="${a.id}" title="Name in the catalog, kind and note – the file keeps its name">✎</button>
       <button class="btn small" data-add-show="${a.id}" ${a.exists ? '' : 'disabled'} title="Show the file in its folder">Folder</button>
-      <button class="btn small" data-add-edit="${a.id}" title="Kind and note">Edit</button>
       <button class="btn small" data-add-remove="${a.id}" title="Take off the list">✕</button></td></tr>`;
 }
 
@@ -117,29 +120,37 @@ export async function addFiles(game, files) {
   return done.length > 0;
 }
 
+/** Name in the catalog (the file keeps its own name), kind and note. */
 async function editFlow(a) {
   const m = openModal({
-    title: `Edit – ${a.filename}`,
-    width: 520,
-    body: `<div class="form-grid" style="grid-template-columns:70px 1fr">
+    title: `Edit – ${a.displayName || a.filename}`,
+    width: 540,
+    body: `<div class="notice err" id="ae-error" hidden></div>
+      <div class="form-grid" style="grid-template-columns:70px 1fr">
+        <label for="ae-name">Name</label><input class="field" id="ae-name" maxlength="120" spellcheck="false" value="${esc(a.displayName || a.filename)}">
+        <span></span><span class="hint" style="margin-top:-4px">Only the name in the catalog – the file keeps its name: <span class="mono">${esc(a.filename)}</span></span>
         <label for="ae-kind">Kind</label><select class="field" id="ae-kind">${kindOptions(a.category)}</select>
         <label for="ae-note">Note</label><textarea class="field" id="ae-note" rows="4" maxlength="2000">${esc(a.note)}</textarea></div>`,
     footer: '<button class="btn" data-close>Cancel</button><button class="btn gold" id="ae-save">Save</button>',
   });
-  m.el.querySelector('#ae-save').addEventListener('click', () => m.close({
-    category: m.el.querySelector('#ae-kind').value, note: m.el.querySelector('#ae-note').value,
-  }));
-  const input = await m.result;
-  if (!input) return false;
-  await api.updateAddition(a.id, input);
-  return true;
+  const q = (sel) => m.el.querySelector(sel);
+  q('#ae-save').addEventListener('click', async () => {
+    try {
+      await api.updateAddition(a.id, { category: q('#ae-kind').value, note: q('#ae-note').value, displayName: q('#ae-name').value });
+      m.close(true);
+    } catch (e) {
+      q('#ae-error').textContent = String(e);
+      q('#ae-error').hidden = false;
+    }
+  });
+  return Boolean(await m.result);
 }
 
 async function removeFlow(a) {
   if (a.kind === 'link') {
     const ok = await confirmBox({
       title: 'Take off the list?',
-      html: `Take <b>${esc(a.filename)}</b> off the list of additional files?\n\nThe file itself is not touched.`,
+      html: `Take <b>${esc(a.displayName || a.filename)}</b> off the list of additional files?\n\nThe file itself is not touched.`,
       ok: 'Take off',
     });
     if (!ok) return false;
@@ -149,7 +160,7 @@ async function removeFlow(a) {
   const m = openModal({
     title: 'Take off the list?',
     width: 500,
-    body: `<div class="dlg-icon warn">!</div><div class="dlg-text">Take <b>${esc(a.filename)}</b> off the list of additional files?
+    body: `<div class="dlg-icon warn">!</div><div class="dlg-text">Take <b>${esc(a.displayName || a.filename)}</b> off the list of additional files?
         <label class="radio-line" style="margin-top:10px"><input type="checkbox" id="ar-delete" checked>
         <span>Also delete the copy stored in the archive (${formatBytes(a.sizeBytes)}).<br><span class="hint">Your original file is not affected.</span></span></label></div>`,
     footer: '<button class="btn" data-close>Cancel</button><button class="btn gold" id="ar-ok">Take off</button>',
@@ -179,7 +190,7 @@ export function bindAdditions(container, game, getList, reload) {
     const t = e.target;
     const find = (attr) => getList().find((x) => x.id === Number(t.closest(`[${attr}]`).getAttribute(attr)));
     if (t.closest('#pf-add-file')) return guard(async () => { if (await addFlow(game)) await reload(); });
-    if (t.closest('[data-add-open]')) return guard(() => api.openAddition(find('data-add-open').id));
+    if (t.closest('[data-add-open]')) return guard(() => api.openAddition(find('data-add-open').id).then((how) => { if (how === 'external') toast('Opened with the default application.'); }));
     if (t.closest('[data-add-run]')) return guard(() => runFlow(find('data-add-run')));
     if (t.closest('[data-add-show]')) return guard(() => api.showAddition(find('data-add-show').id));
     if (t.closest('[data-add-edit]')) return guard(async () => { if (await editFlow(find('data-add-edit'))) await reload(); });

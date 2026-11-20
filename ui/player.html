@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="classic">
+<head>
+  <meta charset="utf-8">
+  <title>Music - Game Curator</title>
+  <link rel="stylesheet" href="css/retro.css">
+  <link rel="stylesheet" href="css/themes.css">
+  <link rel="stylesheet" href="css/classic.css">
+  <link rel="stylesheet" href="css/media.css">
+  <script src="js/theme-boot.js"></script>
+  <script type="module" src="js/player.js"></script>
+</head>
+<body class="media-window">
+  <div class="pl">
+    <section class="panel bevel-out pl-now">
+      <div class="strip"><span id="pl-game">Music</span><span class="spacer"></span><span class="count" id="pl-pos"></span></div>
+      <div class="pl-deck">
+        <div class="pl-title" id="pl-title">&nbsp;</div>
+        <input type="range" class="pl-seek" id="pl-seek" min="0" max="1" step="0.1" value="0" aria-label="Position" disabled>
+        <div class="pl-times"><span id="pl-time">0:00</span><span id="pl-msg" class="pl-msg"></span><span id="pl-dur">0:00</span></div>
+        <div class="pl-controls">
+          <button class="btn icon" id="pl-prev" title="Previous track"></button>
+          <button class="btn icon pl-play" id="pl-play" title="Play (Space)"></button>
+          <button class="btn icon" id="pl-next" title="Next track"></button>
+          <span class="grow"></span>
+          <button class="btn icon" id="pl-mute" title="Mute"></button>
+          <input type="range" class="pl-vol" id="pl-vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+          <button class="btn icon" id="pl-repeat" title="Repeat: off"></button>
+        </div>
+      </div>
+    </section>
+    <section class="panel bevel-out pl-list-panel">
+      <div class="strip">Tracks<span class="spacer"></span><span class="count" id="pl-count"></span></div>
+      <ol class="pl-list" id="pl-list"></ol>
+      <div class="pl-foot">
+        <button class="btn small" id="pl-external" title="Play this track in the default Windows application" disabled>Open in default app</button>
+      </div>
+    </section>
+  </div>
+  <audio id="pl-audio" preload="auto"></audio>
+</body>
+</html>

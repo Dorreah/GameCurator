@@ -2,7 +2,7 @@
 
 import { api } from './api.js';
 import { esc, formatBytes, guard, toast, confirmBox } from './ui.js';
-import { state, THEMES, applyTheme } from './store.js';
+import { state, THEMES, CLASSIC_FONTS, applyTheme, applyClassicFont } from './store.js';
 import { refreshFacets } from './facets.js';
 import { openWizard } from './wizard.js';
 
@@ -14,10 +14,10 @@ async function save(patch, message = 'Settings saved.') {
 }
 
 const SWATCH_TEXT = {
-  classic: '<b>Game Curator</b><span>Personal game archive</span>',
-  amber: '<b>C:\\&gt; GAME CURATOR█</b><span>&gt; READY.</span>',
-  matrix: '<b>&gt; GAME CURATOR█</b><span>&gt; wake up, curator…</span>',
-  dos: '<b>A:\\&gt; GAME CURATOR_</b><span>Alt+1 Library · Alt+5 About</span>',
+  classic: '<b>Game<br>Curator</b><span>Personal game archive</span>',
+  amber: '<b><i>C:\\&gt;</i> GAME CURATOR<u>█</u></b><span>&gt; READY.</span>',
+  matrix: '<b><i>&gt;</i> GAME CURATOR<u>█</u></b><span>&gt; wake up, curator…</span>',
+  dos: '<b><i>A:\\&gt;</i> GAME CURATOR_</b><span>Alt+1 Library · Alt+5</span>',
 };
 
 function themePicker(current) {
@@ -26,6 +26,17 @@ function themePicker(current) {
       <input type="radio" name="theme" value="${key}" ${current === key ? 'checked' : ''}>
       <div class="theme-swatch ${key}">${SWATCH_TEXT[key]}</div>
       <span class="theme-name">${esc(t.name)}</span><span class="hint">${esc(t.description)}</span>
+    </label>`).join('')}</div>`;
+}
+
+const FONT_SAMPLE = 'Game Curator – Příliš žluťoučký kůň';
+
+function fontPicker(current) {
+  return `<div class="font-picker" id="st-font">${Object.entries(CLASSIC_FONTS).map(([key, f]) => `
+    <label class="font-option">
+      <input type="radio" name="classicFont" value="${key}" ${current === key ? 'checked' : ''}>
+      <span class="font-sample font-${key}">${esc(FONT_SAMPLE)}</span>
+      <span class="font-name">${esc(f.name)}</span><span class="hint">${esc(f.note)}</span>
     </label>`).join('')}</div>`;
 }
 
@@ -57,8 +68,23 @@ export const settingsView = {
       <fieldset class="group"><legend>Appearance</legend>
         ${themePicker(cfg.theme)}
         <p class="hint" style="margin:10px 0 0">Themes change only the look. Layout, controls and keyboard shortcuts stay the same.</p>
+        <div class="form-label" style="margin-top:16px">Font of the Classic look</div>
+        ${fontPicker(cfg.classicFont || 'pixel-operator')}
+        <p class="hint" id="st-font-note" style="margin:8px 0 0">${cfg.theme === 'classic' ? 'Used everywhere in the Classic look.' : 'Used when the Classic look is selected; the other themes keep their own font.'}</p>
         <label class="check" style="margin-top:12px"><input type="checkbox" id="st-welcome" ${cfg.showWelcome !== false ? 'checked' : ''}>
           Show the welcome window when Game Curator starts</label>
+      </fieldset>
+
+      <fieldset class="group"><legend>Gaming Journal</legend>
+        <label class="check"><input type="checkbox" id="st-journal-prompt" ${cfg.journalPrompt !== false ? 'checked' : ''}>
+          After playing, offer to write a journal entry</label>
+        <div class="hint" style="margin-top:4px">When a game started with <b>▶ Play</b> ends, Game Curator asks whether you want to write down your impressions while they are fresh. It only notices games started from here, and never counts the time you play.</div>
+      </fieldset>
+
+      <fieldset class="group"><legend>Manuals &amp; music</legend>
+        <label class="check"><input type="checkbox" id="st-viewer" ${cfg.builtinViewer !== false ? 'checked' : ''}>
+          Open PDF manuals and music in Game Curator</label>
+        <div class="hint" style="margin-top:4px"><b>Open</b> on a PDF shows it in a reader window, on a music file it plays the game's soundtrack in a small player &ndash; no other program needed. Both windows have <b>Open in default app</b>; switch this off to always use the programs set in Windows.</div>
       </fieldset>
 
       <fieldset class="group"><legend>Library</legend>
@@ -100,6 +126,14 @@ export const settingsView = {
       applyTheme(r.value);
       save({ theme: r.value }, `Theme: ${THEMES[r.value].name}`);
     }));
+    main.querySelectorAll('input[name=classicFont]').forEach((r) => r.addEventListener('change', () => {
+      applyClassicFont(r.value);
+      save({ classicFont: r.value }, `Classic font: ${CLASSIC_FONTS[r.value].name}`);
+    }));
+    document.getElementById('st-journal-prompt').addEventListener('change', (e) => save({ journalPrompt: e.target.checked },
+      e.target.checked ? 'Game Curator will offer a journal entry after playing.' : 'No journal offer after playing.'));
+    document.getElementById('st-viewer').addEventListener('change', (e) => save({ builtinViewer: e.target.checked },
+      e.target.checked ? 'PDFs and music open in Game Curator.' : 'PDFs and music open in the default applications.'));
     main.querySelectorAll('input[name=viewMode]').forEach((r) => r.addEventListener('change', () => save({ viewMode: r.value })));
     main.querySelectorAll('input[name=cardSize]').forEach((r) => r.addEventListener('change', () => save({ cardSize: r.value })));
     document.getElementById('st-scanroot-browse').addEventListener('click', () => guard(async () => {

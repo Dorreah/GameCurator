@@ -7,4 +7,8 @@
   var root = document.documentElement;
   root.setAttribute('data-theme', theme);
   if (theme !== 'classic') root.classList.add('term');
+  var font = 'pixel-operator';
+  try { font = localStorage.getItem('gc-classic-font') || font; } catch (e) { /* storage unavailable */ }
+  if (font !== 'dogica' && font !== 'geist-pixel' && font !== 'roboto-slab') font = 'pixel-operator';
+  root.setAttribute('data-classic-font', font);
 })();

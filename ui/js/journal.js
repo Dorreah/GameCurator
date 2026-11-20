@@ -165,6 +165,7 @@ export async function openEntryEditor({ entry = null, gameId = null } = {}) {
 
 let entries = [];
 let covers = new Map();
+let installed = new Set();
 
 /** Groups entries (newest first) by game; the game with the latest entry comes first. */
 function groupByGame(list) {
@@ -184,7 +185,7 @@ function groupHtml(g) {
   return `<section class="jgroup" data-group="${g.gameId}">
     <header class="jgroup-head" data-game="${g.gameId}" title="Open ${esc(g.title)}">
       <div class="jgroup-cover">${thumb ? `<img src="${esc(imgSrc(thumb))}" loading="lazy" decoding="async" alt="">` : ''}</div>
-      <div><div class="jgroup-title">${esc(g.title)}</div>
+      <div><div class="jgroup-title game-title${installed.has(g.gameId) ? ' inst' : ''}">${esc(g.title)}</div>
         <div class="hint">${g.entries.length} entr${g.entries.length === 1 ? 'y' : 'ies'} · ${span}</div></div>
     </header>
     <div class="entries">${g.entries.map((e) => entryHtml(e, { showGame: false })).join('')}</div>
@@ -197,6 +198,7 @@ async function load(focusGame) {
     const [all, games] = await Promise.all([api.listJournal({ order: 'desc' }), api.listGames({})]);
     entries = all;
     covers = new Map(games.map((g) => [g.id, g.thumbnailPath]));
+    installed = new Set(games.filter((g) => g.isInstalled).map((g) => g.id));
   } catch (e) {
     list.innerHTML = `<div class="notice err">${esc(e)}</div>`;
     return;

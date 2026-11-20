@@ -15,14 +15,15 @@ function cardHtml(g) {
   const meta = [g.releaseYear, g.fileCount ? formatBytes(g.totalSize) : null].filter(Boolean).join(' · ');
   return `<button class="card${g.isAvailable ? '' : ' offline'}" data-id="${g.id}" title="${esc(g.title)}">
     <div class="cover">${cover}${g.isAvailable ? '' : '<span class="badge offline stamp">OFFLINE</span>'}</div>
-    <div class="meta"><div class="t">${esc(g.title)}</div><div class="s"><span>${esc(meta)}</span>${installBox(g.isInstalled)}</div></div>
+    <div class="meta"><div class="t game-title${g.isInstalled ? ' inst' : ''}">${esc(g.title)}</div><div class="s"><span>${esc(meta)}</span>${installBox(g.isInstalled)}</div></div>
   </button>`;
 }
 
 function rowHtml(g) {
   return `<tr class="click${g.isAvailable ? '' : ' offline'}" data-id="${g.id}">
     <td class="inst-col">${installBox(g.isInstalled)}</td>
-    <td><b>${esc(g.title)}</b>${g.isAvailable ? '' : ' <span class="badge offline">OFFLINE</span>'}</td>
+    <td class="ico-col">${g.isInstalled && g.iconPath ? `<img class="game-icon" src="${esc(imgSrc(g.iconPath))}" alt="" loading="lazy" decoding="async">` : ''}</td>
+    <td><b class="game-title${g.isInstalled ? ' inst' : ''}">${esc(g.title)}</b>${g.isAvailable ? '' : ' <span class="badge offline">OFFLINE</span>'}</td>
     <td class="num">${g.releaseYear ?? ''}</td><td>${esc(g.genre)}</td>
     <td class="num">${g.fileCount || ''}</td><td class="num">${g.fileCount ? formatBytes(g.totalSize) : ''}</td>
     <td class="mono muted">${esc(g.folderPath)}</td></tr>`;
@@ -47,7 +48,7 @@ function render() {
     return;
   }
   if (state.config.viewMode === 'catalog') {
-    scroll.innerHTML = `<table class="list"><thead><tr><th class="inst-col" title="Installed on this PC">Inst.</th><th>Title</th><th class="num">Year</th><th>Genre</th><th class="num">Files</th><th class="num">Size</th><th>Folder</th></tr></thead>
+    scroll.innerHTML = `<table class="list"><thead><tr><th class="inst-col" title="Installed on this PC">Inst.</th><th class="ico-col" aria-label="Icon"></th><th>Title</th><th class="num">Year</th><th>Genre</th><th class="num">Files</th><th class="num">Size</th><th>Folder</th></tr></thead>
       <tbody>${games.map(rowHtml).join('')}</tbody></table>`;
   } else {
     scroll.innerHTML = `<div class="grid">${games.map(cardHtml).join('')}</div>`;

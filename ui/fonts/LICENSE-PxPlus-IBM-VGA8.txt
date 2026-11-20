@@ -1,0 +1,12 @@
+PxPlus IBM VGA8 - from The Ultimate Oldschool PC Font Pack
+Outline (vector) version (c) 2015 VileR - https://int10h.org/oldschool-pc-fonts/
+
+Licensed under the Creative Commons Attribution-ShareAlike 4.0 International
+License (CC BY-SA 4.0): https://creativecommons.org/licenses/by-sa/4.0/
+
+Game Curator ships this font unmodified; it is only converted to WOFF2
+(tools/make_fonts.py), a format change the licence allows. The few interface
+symbols the font does not have are drawn in a separate font (GC VGA Symbols,
+ui/fonts/gc-vga-symbols.woff2) instead of being added to this one.
+Source of this copy: https://github.com/pocketfood/Fontpkg-PxPlus_IBM_VGA8
+(version v1.0-2015-11, as embedded in the font's name table).
