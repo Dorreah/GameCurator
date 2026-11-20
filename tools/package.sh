@@ -16,6 +16,17 @@ if grep -q "WebView2Loader.dll" <<<"$IMPORTS"; then
   DLL=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -path "*webview2-com-sys-*/x64/WebView2Loader.dll" | sort | tail -1)
   cp "$DLL" dist/GAME_CURATOR/WebView2Loader.dll
 fi
+# Licence texts of the fonts and of pdf.js (the PDF viewer), which are built into the exe.
+mkdir -p dist/GAME_CURATOR/Licenses
+cp ui/fonts/LICENSE-*.txt dist/GAME_CURATOR/Licenses/
+P=ui/vendor/pdfjs
+cp "$P/LICENSE" dist/GAME_CURATOR/Licenses/LICENSE-pdfjs.txt
+cp "$P/standard_fonts/LICENSE_FOXIT" dist/GAME_CURATOR/Licenses/LICENSE-pdfjs-Foxit-fonts.txt
+cp "$P/standard_fonts/LICENSE_LIBERATION" dist/GAME_CURATOR/Licenses/LICENSE-pdfjs-Liberation-fonts.txt
+cp "$P/iccs/LICENSE" dist/GAME_CURATOR/Licenses/LICENSE-pdfjs-ICC-profile.txt
+for f in JBIG2 OPENJPEG QCMS PDFJS_JBIG2 PDFJS_OPENJPEG PDFJS_QCMS; do
+  cp "$P/wasm/LICENSE_$f" "dist/GAME_CURATOR/Licenses/LICENSE-pdfjs-wasm-$f.txt"
+done
 # Data/, Games/ and .gamecurator-id are created by the app on first start.
 (cd dist && rm -f GameCurator-0.1.0-windows-portable.zip && zip -qr GameCurator-0.1.0-windows-portable.zip GAME_CURATOR)
 ls -la dist dist/GAME_CURATOR

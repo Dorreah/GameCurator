@@ -12,6 +12,7 @@ Usage:  python3 tests/e2e/run_e2e.py <path-to-GameCurator-binary> <output-dir>
 Needs:  Xvfb on :99, tauri-driver, WebKitWebDriver, selenium, Pillow.
 """
 import json
+import re
 import os
 import shutil
 import socket
@@ -51,10 +52,52 @@ def touch(p: Path, size=64):
 def game_folder(p: Path, slug: str):
     touch(p / f"setup_{slug}_1.0.2.exe", 4096)
     touch(p / f"setup_{slug}_1.0.2-1.bin", 16384)
-    touch(p / "Manual.pdf", 1024)
-    touch(p / "Soundtrack" / "01 - Main Theme.mp3", 512)
-    touch(p / "Soundtrack" / "02 - Combat.flac", 512)
+    real_pdf(p / "Manual.pdf", slug.replace("_", " ").title())
+    real_audio(p / "Soundtrack" / "01 - Main Theme.mp3", 4, 440)
+    real_audio(p / "Soundtrack" / "02 - Combat.flac", 3, 660)
     touch(p / "Extras" / "artbook.zip", 256)
+
+
+def real_pdf(path: Path, title="System Shock 2", pages=3):
+    """A small but real PDF manual: a title, text in a standard font (needs the
+    viewer's font data) and a dark box per page, A4/Letter mixed sizes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    objs = []
+    kids = []
+    font_id = 3
+    objs.append(None)  # 1 catalog
+    objs.append(None)  # 2 pages
+    objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+    for n in range(1, pages + 1):
+        w, h = (612, 792) if n != 2 else (595, 842)
+        text = f"{title} - Manual page {n}".encode("latin-1")
+        stream = (b"0.1 0.1 0.1 rg 72 %d 300 120 re f BT /F1 28 Tf 72 %d Td (%s) Tj ET"
+                  % (h - 340, h - 120, text))
+        objs.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+        content_id = len(objs)
+        objs.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>"
+                    % (w, h, font_id, content_id))
+        kids.append(len(objs))
+    objs[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objs[1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (b" ".join(b"%d 0 R" % k for k in kids), len(kids))
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n%s\nendobj\n" % (i, o)
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    for off in offsets:
+        out += b"%010d 00000 n \n" % off
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    path.write_bytes(bytes(out))
+
+
+def real_audio(path: Path, seconds=4, freq=440):
+    """A real music file (sine tone) made with ffmpeg: mp3 / flac / ogg by extension."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"sine=frequency={freq}:duration={seconds}",
+                    "-ac", "2", "-ar", "44100", str(path)], check=True)
 
 
 def wide_cover(path: Path, left, right, size=(1600, 1000)):
@@ -130,6 +173,10 @@ class App:
             GC_E2E_ACTION_LOG=str(LOG),
             GC_E2E_INSTALLED=str(installed),
             GC_E2E_MACHINE=machine,
+            # a stand-in game started by Play: a launcher that quits at once and
+            # leaves a program from the installation folder running for 2 s
+            GC_E2E_GAME_CMD=str(WORK / "C" / "GOG Games" / "Disco Elysium" / "play.sh"),
+            GC_E2E_FAST_SESSIONS="1",
             DISPLAY=":99",
             WEBKIT_DISABLE_COMPOSITING_MODE="1",
         )
@@ -150,7 +197,11 @@ class App:
 
     def quit(self):
         try:
-            self.d.quit()
+            try:
+                self.d.quit()
+            except Exception:
+                if not getattr(self, "closed", False):
+                    raise
         finally:
             self.proc.terminate()
             try:
@@ -219,6 +270,12 @@ class App:
         """innerText via JS (robust against re-rendering and CSS containment)."""
         return self.js("const e=document.querySelector(arguments[0]); return e ? e.innerText : ''", sel)
 
+    def new_window(self, known, timeout=15):
+        """Waits for a window the app opened (PDF viewer, music player) and switches to it."""
+        handle = WebDriverWait(self.d, timeout).until(lambda d: next((h for h in d.window_handles if h not in known), False))
+        self.d.switch_to.window(handle)
+        return handle
+
     def close_modals(self):
         for _ in range(4):
             if not self.count(".overlay"):
@@ -227,6 +284,47 @@ class App:
             if btns:
                 btns[-1].click()
                 time.sleep(0.2)
+
+
+def wm_close(title_regex):
+    """Asks windows to close the way their title-bar X does (WM_DELETE_WINDOW),
+    so the app sees a real close request. Returns how many windows matched."""
+    import ctypes
+    import ctypes.util
+    ids = subprocess.run(["xdotool", "search", "--name", title_regex], capture_output=True, text=True,
+                         env={**os.environ, "DISPLAY": ":99"}).stdout.split()
+    if not ids:
+        return 0
+    x = ctypes.cdll.LoadLibrary(ctypes.util.find_library("X11"))
+    x.XOpenDisplay.restype = ctypes.c_void_p
+    x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x.XInternAtom.restype = ctypes.c_ulong
+    x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+
+    class ClientMessage(ctypes.Structure):
+        _fields_ = [("type", ctypes.c_int), ("serial", ctypes.c_ulong), ("send_event", ctypes.c_int), ("display", ctypes.c_void_p),
+                    ("window", ctypes.c_ulong), ("message_type", ctypes.c_ulong), ("format", ctypes.c_int), ("data", ctypes.c_long * 5)]
+
+    class XEvent(ctypes.Union):
+        _fields_ = [("xclient", ClientMessage), ("pad", ctypes.c_long * 24)]
+
+    x.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.POINTER(XEvent)]
+    x.XFlush.argtypes = [ctypes.c_void_p]
+    x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    dpy = x.XOpenDisplay(b":99")
+    protocols = x.XInternAtom(dpy, b"WM_PROTOCOLS", 0)
+    delete = x.XInternAtom(dpy, b"WM_DELETE_WINDOW", 0)
+    for wid in ids:
+        ev = XEvent()
+        ev.xclient.type = 33  # ClientMessage
+        ev.xclient.window = int(wid)
+        ev.xclient.message_type = protocols
+        ev.xclient.format = 32
+        ev.xclient.data[0] = delete
+        x.XSendEvent(dpy, int(wid), 0, 0, ctypes.byref(ev))
+    x.XFlush(dpy)
+    x.XCloseDisplay(dpy)
+    return len(ids)
 
 
 def pick(path):
@@ -296,6 +394,12 @@ def run():
     touch(de_inst / "disco.exe")
     (de_inst / "goggame-1771589310.info").write_text(json.dumps({"gameId": "1771589310", "name": "Disco Elysium - The Final Cut",
         "playTasks": [{"category": "game", "isPrimary": True, "path": "disco.exe", "type": "FileTask"}]}))
+    Image.new("RGBA", (48, 48), (230, 120, 20, 255)).save(de_inst / "goggame-1771589310.ico", sizes=[(48, 48), (32, 32)])
+    shutil.copy("/bin/sleep", de_inst / "game-bin")
+    # the stand-in launcher starts the "game" (2 s) and quits; the game's end is written down
+    (de_inst / "play.sh").write_text('#!/bin/sh\nd="$(dirname "$0")"\n( "$d/game-bin" 2; date +%s.%N > "$d/ended" ) &\nexit 0\n')
+    (de_inst / "play.sh").chmod(0o755)
+    de_ico_bytes = (de_inst / "goggame-1771589310.ico").read_bytes()
     ss2_inst = WORK / "C" / "Games" / "SS2"
     touch(ss2_inst / "ss2.exe")
     # screenshots taken in a game, and files downloaded for it
@@ -451,10 +555,86 @@ def run():
               len(thumbs) == 1 and thumbs[0] != webps[0] and crop["h"] > 2 and abs(crop["w"] - 1) < 0.01, f"{crop} {thumbs}")
         check("fitted thumbnail: dark bands, both halves of the picture",
               thumb_colour(thumbs[0], 180, 20) == "dark" and thumb_colour(thumbs[0], 60, 240) == "left" and thumb_colour(thumbs[0], 300, 240) == "right")
+        # ---- manuals and music open in Game Curator's own windows
         LOG.write_text("")
-        app.js("[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Manual.pdf')).querySelector('[data-open]').click()")
-        app.until(lambda: any("Manual.pdf" in a for a in actions()), msg="open pdf")
-        check("Open PDF manual -> opened with default application", any(a.startswith("OPEN") and a.endswith("Manual.pdf") for a in actions()))
+        main_win = app.d.current_window_handle
+        open_row = "[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes(arguments[0])).querySelector('[data-open]').click()"
+        check("Open buttons say where PDFs and music open",
+              app.js("return [...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Manual.pdf')).querySelector('[data-open]').title")
+              == "Read in the Game Curator viewer")
+        t0 = time.perf_counter()
+        app.js(open_row, "Manual.pdf")
+        viewer_win = app.new_window([main_win])
+        app.until(lambda: app.text("#vw-pages") == "3", msg="pdf loaded")
+        app.until(lambda: app.count(".vw-page.drawn") >= 1, msg="page drawn")
+        METRICS["pdf_first_page_s"] = round(time.perf_counter() - t0, 2)
+        check("Open on a PDF manual opens it in the viewer window - no other program started",
+              app.d.current_url.endswith("viewer.html") and not any(a.startswith("OPEN") for a in actions()), app.d.current_url)
+        check("viewer window titled with the document and the game", app.d.title == "Manual \u2014 System Shock 2", app.d.title)
+        ink = app.js("""const c=document.querySelector('.vw-page[data-page="1"] canvas'), d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+                        let dark=0, n=0; for (let i=0;i<d.length;i+=16) { n++; if (d[i]<80 && d[i+1]<80 && d[i+2]<80) dark++; } return [dark, n];""")
+        check("page 1 drawn with its text and picture (pdf.js, standard fonts from the app)", ink[0] > ink[1] * 0.02 and ink[0] < ink[1] * 0.5, str(ink))
+        check("viewer: page counter and fit-width zoom",
+              "3 pages" in app.text("#vw-status") and app.js("return document.getElementById('vw-zoom').value") == "width"
+              and abs(app.js("return document.querySelector('.vw-page').offsetWidth") - (app.js("return document.getElementById('vw-scroll').clientWidth") - 32)) <= 2)
+        app.shot("05c-pdf-viewer")
+        app.click("#vw-next")
+        app.until(lambda: app.js("return document.getElementById('vw-page').value") == "2", msg="next page")
+        app.js("const s=document.getElementById('vw-zoom'); s.value='2'; s.dispatchEvent(new Event('change'))")
+        app.until(lambda: app.js("return document.querySelector('.vw-page[data-page=\"1\"]').offsetWidth") == 1632, msg="zoom 200")
+        app.type("#vw-page", "3" + Keys.ENTER)
+        app.until(lambda: app.js("return document.getElementById('vw-page').value") == "3" and app.count(".vw-page[data-page='3'].drawn") == 1, msg="page 3")
+        app.until(lambda: app.count(".vw-page[data-page='2'].drawn") == 1, msg="page 2 drawn")
+        check("next page, page number and 200 % zoom (pages at twice their printed size; the A4 page keeps its own size)",
+              app.js("return document.querySelector('.vw-page[data-page=\"2\"]').offsetWidth") == 1587
+              and app.js("return document.getElementById('vw-scroll').scrollTop") > 1000)
+        app.click("#vw-external")
+        app.until(lambda: any(a.startswith("OPEN") for a in actions()), msg="external")
+        check("viewer: 'Open in default app' hands the PDF to Windows", any(a.startswith("OPEN") and a.endswith("Manual.pdf") for a in actions()), str(actions()))
+        app.d.switch_to.window(main_win)
+        app.js(open_row, "Manual.pdf")
+        time.sleep(1.0)
+        check("the same manual again: its viewer comes to the front, no second window", len(app.d.window_handles) == 2)
+        wm_close("^Manual")
+        app.until(lambda: len(app.d.window_handles) == 1, msg="viewer closed")
+        app.d.switch_to.window(main_win)
+        LOG.write_text("")
+        mp3 = root_d / "Games" / "System Shock 2" / "Soundtrack" / "01 - Main Theme.mp3"
+        flac = root_d / "Games" / "System Shock 2" / "Soundtrack" / "02 - Combat.flac"
+        app.js(open_row, "01 - Main Theme.mp3")
+        player_win = app.new_window([main_win])
+        audio_bytes = "return document.getElementById('pl-audio').dataset.bytes"
+        app.until(lambda: app.js(audio_bytes) == str(mp3.stat().st_size), msg="track loaded")
+        tracks = app.js("return [...document.querySelectorAll('.pl-track .pl-name')].map(e => e.innerText)")
+        check("Open on a music file opens the music player with the game's soundtrack, starting with that track",
+              app.d.current_url.endswith("player.html") and tracks == ["01 - Main Theme", "02 - Combat"]
+              and app.text(".pl-track.on .pl-name") == "01 - Main Theme" and app.js("return document.getElementById('pl-game').textContent") == "System Shock 2"
+              and not any(a.startswith("OPEN") for a in actions()), f"{tracks} {actions()}")
+        app.until(lambda: app.js("const a=document.getElementById('pl-audio'); return a.duration > 3.5 && a.duration < 4.5"), msg="decoded")
+        app.until(lambda: app.js("return document.getElementById('pl-audio').currentTime") > 0.2, msg="playing")
+        check("the track plays (decoded: 0:04) with play/pause, previous, next, seek, volume and repeat",
+              app.text("#pl-dur") == "0:04" and all(app.count(sel) == 1 for sel in ["#pl-play", "#pl-prev", "#pl-next", "#pl-seek", "#pl-vol", "#pl-repeat"]))
+        app.shot("05d-music-player")
+        app.click("#pl-play")
+        app.until(lambda: app.js("return document.getElementById('pl-audio').paused"), msg="paused")
+        app.click("#pl-next")
+        app.until(lambda: app.js(audio_bytes) == str(flac.stat().st_size), msg="next track")
+        check("pause, then next track (FLAC)", app.text("#pl-title") == "02 - Combat" and app.text("#pl-pos") == "2 / 2")
+        app.click("#pl-repeat")
+        check("repeat: all tracks", app.css("#pl-repeat").get_attribute("title") == "Repeat: all tracks")
+        app.click("#pl-repeat")
+        app.click("#pl-repeat")
+        app.click("#pl-external")
+        app.until(lambda: any(a.startswith("OPEN") for a in actions()), msg="external track")
+        check("player: 'Open in default app' hands the track to Windows", any(a.endswith("02 - Combat.flac") for a in actions()), str(actions()))
+        app.d.switch_to.window(main_win)
+        app.js(open_row, "01 - Main Theme.mp3")
+        app.d.switch_to.window(player_win)
+        app.until(lambda: app.js(audio_bytes) == str(mp3.stat().st_size), msg="back to track 1")
+        check("opening another track from the game: the same player switches to it", len(app.d.window_handles) == 2 and app.text("#pl-title") == "01 - Main Theme")
+        wm_close("Music$")
+        app.until(lambda: len(app.d.window_handles) == 1, msg="player closed")
+        app.d.switch_to.window(main_win)
         app.js("document.querySelector('[data-dir=\"Soundtrack\"]').click()")
         app.until(lambda: any(a.endswith("Soundtrack") for a in actions()), msg="open folder")
         check("Open soundtrack subfolder in file manager", any(a.startswith("OPEN") and a.endswith("Soundtrack") for a in actions()))
@@ -470,6 +650,30 @@ def run():
         time.sleep(0.6)
         cat = sqlite3.connect(root_d / "Data" / "library.db").execute("select custom_category from files where filename='artbook.zip'").fetchone()
         check("custom file category stored", cat and cat[0] == "image", str(cat))
+        # a name in the catalog (pencil next to Open); the file on disk keeps its name
+        row_js = "return [...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes(arguments[0]))"
+        app.js(row_js.replace("return ", "") + ".querySelector('[data-rename]').click()", "Manual.pdf")
+        app.visible("#rn-name")
+        check("rename window: only the name in the catalog, the file keeps its name",
+              app.js("return document.getElementById('rn-name').value") == "Manual.pdf" and "keeps its own name" in app.text(".overlay"))
+        app.type("#rn-name", "Original manual (English)")
+        app.click("#rn-save")
+        app.gone("#rn-name")
+        app.until(lambda: "Original manual (English)" in app.text("#pf-content"), msg="renamed")
+        manual = root_d / "Games" / "System Shock 2" / "Manual.pdf"
+        dn = sqlite3.connect(root_d / "Data" / "library.db").execute("select display_name, filename from files where filename='Manual.pdf'").fetchone()
+        tip = app.js("return [...document.querySelectorAll('#pf-content td.fname')].find(t=>t.innerText.includes('Original manual')).title")
+        check("archive file shown under its new name; on disk still Manual.pdf (tooltip says so)",
+              manual.is_file() and dn == ("Original manual (English)", "Manual.pdf") and "Manual.pdf" in tip
+              and "Manual.pdf" not in app.text("#pf-content tbody"), f"{dn} {tip!r}")
+        app.shot("05b-file-renamed")
+        app.js(row_js.replace("return ", "") + ".querySelector('[data-rename]').click()", "Original manual")
+        app.visible("#rn-reset")
+        app.click("#rn-reset")
+        app.gone("#rn-name")
+        app.until(lambda: "Manual.pdf" in app.text("#pf-content tbody"), msg="name reset")
+        check("'Use the file name' brings the file name back",
+              sqlite3.connect(root_d / "Data" / "library.db").execute("select display_name from files where filename='Manual.pdf'").fetchone()[0] is None)
 
         # edit + tag + notes
         app.click("#pf-edit")
@@ -605,15 +809,35 @@ def run():
         on = app.js("return [...document.querySelectorAll('.card')].filter(c=>c.querySelector('.inst-box.on')).map(c=>c.querySelector('.t').innerText)")
         check("library: checkbox icon on every card, ticked for the installed game",
               app.count(".card .inst-box") == 4 and on == ["Disco Elysium"], str(on))
+        tcols = app.js("return [...document.querySelectorAll('.card .t')].map(t => [t.innerText, getComputedStyle(t).color])")
+        check("Classic: titles of games not installed in orange, the installed one in green",
+              all(c == ("rgb(143, 212, 154)" if "Disco" in t else "rgb(244, 163, 90)") for t, c in tcols), str(tcols))
         app.click("[data-mode='catalog']")
         app.until(lambda: app.count("table.list tbody tr") == 4)
         check("catalog: 'installed' column", app.count("table.list tbody .inst-box.on") == 1 and app.count("table.list thead .inst-col") == 1)
+        app.until(lambda: app.js("const i=document.querySelector('table.list img.game-icon'); return !!i && i.complete && i.naturalWidth > 0"), msg="icon")
+        icon_row = app.js("return document.querySelector('table.list img.game-icon').closest('tr').innerText")
+        cols = app.js("return [...document.querySelectorAll('table.list tr')].map(r => r.children[1].getBoundingClientRect().left)")
+        order = app.js("return [...document.querySelector('table.list thead tr').children].map(c => c.className.split(' ')[0] || c.innerText)")
+        icon_rel = sqlite3.connect(root_d / "Data" / "library.db").execute("select icon_path from games where title like 'Disco%'").fetchone()[0]
+        check("catalog: icon of the installed game between the installed column and Title, aligned",
+              app.count("table.list img.game-icon") == 1 and "Disco Elysium" in icon_row and [o.upper() for o in order[:3]] == ["INST-COL", "ICO-COL", "TITLE"]
+              and len(set(round(x) for x in cols)) == 1, f"{icon_row!r} {order} {cols}")
+        check("…read from GOG's goggame-*.ico (cached in Data/Thumbnails), the installation untouched",
+              icon_rel and icon_rel.startswith("Data/Thumbnails/icon-") and (root_d / icon_rel).is_file()
+              and (WORK / "C" / "GOG Games" / "Disco Elysium" / "goggame-1771589310.ico").read_bytes() == de_ico_bytes, str(icon_rel))
+        app.shot("10b-catalog-icons")
         app.click("[data-mode='grid']")
         app.until(lambda: app.count(".card") == 4)
         LOG.write_text("")
         app.js("[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('Disco')).click()")
         app.visible("#pf-install")
-        check("profile: installed, with its location", "Installed on this PC" in app.text("#pf-install") and "Disco Elysium" in app.text("#pf-install .path"), app.text("#pf-install"))
+        inst_tip = app.js("return document.querySelector('#pf-install .inst-text').title")
+        check("profile: installed; the path is not printed (tooltip and 'Show location' tell where)",
+              "Installed on this PC" in app.text("#pf-install") and "GOG Games" not in app.text("#pf-install")
+              and "GOG Games" in inst_tip and app.count("#pf-inst-folder") == 1, f"{app.text('#pf-install')!r} / {inst_tip!r}")
+        green = app.js("return getComputedStyle(document.querySelector('.profile-head h1')).color")
+        check("Classic: title of an installed game in green", green == "rgb(143, 212, 154)", green)
         check("Play sits in the 'Installed on this PC' box (not in the header)", app.count("#pf-install #pf-play") == 1 and app.count(".profile-head #pf-play") == 0)
         app.click("#pf-play")
         app.visible(".overlay [data-ok]")
@@ -622,6 +846,50 @@ def run():
         app.click(".overlay [data-ok]")
         app.until(lambda: any(a.startswith("PLAY") for a in actions()), msg="play")
         check("Play starts the program from goggame-*.info", any(a.startswith("PLAY") and a.endswith("disco.exe") for a in actions()), str(actions()))
+        # ---- after playing: the end of the game is noticed, a journal entry offered
+        app.until(lambda: app.js("const b=document.getElementById('pf-play'); return !!b && b.disabled && b.innerText.includes('Running')"), msg="running")
+        check("while the game runs, Play shows 'Running' (no second start)", True)
+        main_win = app.d.current_window_handle
+        ended_file = de_inst / "ended"
+        offer_win = app.new_window([main_win], timeout=20)
+        appeared = app.js("return performance.timeOrigin") / 1000
+        app.until(lambda: "Disco Elysium" in app.text("#of-text"), msg="offer text")
+        delay = appeared - float(ended_file.read_text())
+        METRICS["journal_offer_after_game_end_s"] = round(delay, 2)
+        check("the moment the game ends (launcher quit at once, the game 2 s later): the journal offer appears within 2 s, in a window of its own",
+              app.d.current_url.endswith("offer.html") and -0.5 < delay < 2.0, f"{delay:.2f} s")
+        # "always on top" itself cannot be seen here: without a window manager (Xvfb) no window is above
+        # another - see docs/TESTING.md, section 4
+        check("offer: the game, 'Don't show this again', 'Not now', 'Write entry'",
+              "Back from the game" in app.d.title and "You just finished playing Disco Elysium" in app.text("#of-text")
+              and app.count("#of-never") == 1 and app.text("#of-later") == "Not now" and "Write entry" in app.text("#of-write"))
+        check("…without any play time (an archive, not a counter)", not re.search(r"\d+\s*(min|h|hour|minute)", app.text("body")))
+        app.shot("12c2-journal-offer")
+        app.click("#of-write")
+        app.until(lambda: len(app.d.window_handles) == 1, msg="offer closed")
+        app.d.switch_to.window(main_win)
+        app.visible(".overlay .editor")
+        check("'Write entry' closes the offer and opens a new journal entry for the game in the main window",
+              "Disco Elysium" in app.text(".profile-head") and app.js("return document.getElementById('pf-play').innerText").strip().endswith("Play"))
+        app.js("document.querySelector('.overlay .window-title .x').click()")
+        app.gone(".overlay")
+        # don't show again -> no more offers (until turned on in Settings)
+        ended_file.unlink()
+        app.click("#pf-play")
+        app.click(".overlay [data-ok]")
+        app.new_window([main_win], timeout=20)
+        app.until(lambda: "Disco Elysium" in app.text("#of-text"), msg="second offer")
+        app.click("#of-never")
+        app.click("#of-later")
+        app.until(lambda: len(app.d.window_handles) == 1, msg="offer closed")
+        app.d.switch_to.window(main_win)
+        app.until(lambda: json.loads((root_d / "Data" / "config.json").read_text()).get("journalPrompt") is False, msg="prompt off")
+        check("'Don't show this again' turns the offer off (config.json)", True)
+        app.click("#pf-play")
+        app.click(".overlay [data-ok]")
+        app.until(lambda: app.js("const b=document.getElementById('pf-play'); return !!b && !b.disabled"), timeout=20, msg="ended again")
+        time.sleep(1.5)
+        check("…and the next game end asks nothing", len(app.d.window_handles) == 1 and app.count(".overlay") == 0)
         app.click("#pf-inst-folder")
         app.until(lambda: any(a.startswith("OPEN") for a in actions()), msg="show location")
         check("'Show location' opens the installation folder", any(a.startswith("OPEN") and a.endswith("Disco Elysium") for a in actions()), str(actions()))
@@ -661,7 +929,8 @@ def run():
         pick(ss2_inst / "ss2.exe")
         app.click("#pf-inst-locate")
         app.until(lambda: app.count("#pf-play") == 1, msg="located")
-        check("located by the user: Play available", "set by you" in app.text("#pf-install"), app.text("#pf-install"))
+        check("located by the user: Play available ('set by you' in the tooltip)",
+              "set by you" in app.js("return document.querySelector('#pf-install .inst-text').title"), app.text("#pf-install"))
         app.click("#pf-back")
         app.until(lambda: app.count(".card") == 4 and app.count(".card .inst-box.on") == 2, msg="two installed")
 
@@ -775,6 +1044,17 @@ def run():
         app.until(lambda: app.count("table.additions tr") == 3)
         kinds = app.js("return [...document.querySelectorAll('table.additions .add-kind')].map(e=>e.innerText.trim().toLowerCase())")
         check("sorted by kind: fix, patch, bonus", kinds == ["fix", "patch", "bonus"], str(kinds))
+        app.click("table.additions tr:nth-child(2) [data-add-edit]")
+        app.visible("#ae-name")
+        app.type("#ae-name", "Community patch (SS2Tool)")
+        app.click("#ae-save")
+        app.gone("#ae-name")
+        app.until(lambda: "Community patch (SS2Tool)" in app.text("table.additions"), msg="addition renamed")
+        check("additional file renamed in the catalog (pencil next to Open); the file keeps its name",
+              (dl / "ss2_community_patch.exe").is_file() and "ss2_community_patch.exe" not in app.text("table.additions")
+              and sqlite3.connect(root_d / "Data" / "library.db").execute(
+                  "select display_name, filename from additions where filename='ss2_community_patch.exe'").fetchone()
+              == ("Community patch (SS2Tool)", "ss2_community_patch.exe"))
         app.shot("12g-additional-files")
         app.click("[data-add-run]")
         app.visible(".overlay [data-ok]")
@@ -883,6 +1163,56 @@ def run():
         # ---- themes: appearance only
         check("four themes offered in Settings (incl. DOS Midnight)", app.count("input[name=theme]") == 4 and "DOS Midnight" in app.text("#st-theme"))
         check("classic theme is the default", app.js("return document.documentElement.dataset.theme") == "classic")
+        check("classic: pixel font (Pixel Operator) loaded from the app, no system font fallback",
+              "Pixel Operator" in app.js("return getComputedStyle(document.body).fontFamily")
+              and app.js("return document.fonts.check('16px \"Pixel Operator\"') && document.fonts.check('bold 16px \"Pixel Operator 8\"')")
+              and app.js("return [...document.fonts].filter(f => f.status === 'loaded' && /Pixel Operator/.test(f.family)).length") >= 2,
+              app.js("return [...document.fonts].map(f => f.family + ':' + f.weight + ':' + f.status).join(', ')"))
+        body_color = app.js("return getComputedStyle(document.body).color")
+        check("classic: body text in a light grey, not white", body_color == "rgb(195, 191, 203)", body_color)
+        # ---- font of the Classic look
+        cfg_file = root_d / "Data" / "config.json"
+        check("Settings offer 4 fonts for the Classic look, each sample in its own font",
+              app.count("input[name=classicFont]") == 4 and app.js("return document.documentElement.dataset.classicFont") == "pixel-operator"
+              and app.js("return getComputedStyle(document.querySelector('.font-sample.font-dogica')).fontFamily").startswith('"Dogica Pixel"'))
+        font_info = {}
+        for key, family, size in [("dogica", "Dogica Pixel", "8px"), ("geist-pixel", "Geist Pixel", "14px"), ("roboto-slab", "Roboto Slab", "14px")]:
+            app.js(f"document.querySelector('input[name=classicFont][value=\"{key}\"]').click()")
+            app.until(lambda: json.loads(cfg_file.read_text()).get("classicFont") == key, msg=key)
+            app.until(lambda: app.js(f"return [...document.fonts].some(f => f.family.includes('{family}') && f.status === 'loaded')"), msg=f"{key} loaded")
+            font_info[key] = (app.js("return getComputedStyle(document.body).fontFamily"), app.js("return getComputedStyle(document.body).fontSize"))
+            if key == "dogica":
+                app.shot("12h-settings-font-dogica")
+        check("choosing a font switches the Classic look at once and is saved (Dogica 8 px, Geist Pixel and Roboto Slab 14 px)",
+              all(font_info[k][0].startswith(f'"{fam}"') and font_info[k][1] == size for k, fam, size in
+                  [("dogica", "Dogica Pixel", "8px"), ("geist-pixel", "Geist Pixel", "14px"), ("roboto-slab", "Roboto Slab", "14px")]), str(font_info))
+        app.js("document.querySelector('input[name=classicFont][value=\"pixel-operator\"]').click()")
+        app.until(lambda: json.loads(cfg_file.read_text()).get("classicFont") == "pixel-operator", msg="back to default")
+        check("back to Pixel Operator", app.js("return getComputedStyle(document.body).fontSize") == "16px")
+        # ---- the journal offer can be turned back on
+        check("Settings: the journal offer after playing is off (turned off in the offer itself)",
+              app.js("return document.getElementById('st-journal-prompt').checked") is False)
+        app.click("#st-journal-prompt")
+        app.until(lambda: json.loads(cfg_file.read_text()).get("journalPrompt") is True, msg="prompt on")
+        check("…and can be turned on again", True)
+        # ---- the built-in viewer can be switched off: PDFs go to the default application
+        check("Settings: manuals and music open in Game Curator (on by default)",
+              app.js("return document.getElementById('st-viewer').checked") is True)
+        app.click("#st-viewer")
+        app.until(lambda: json.loads(cfg_file.read_text()).get("builtinViewer") is False, msg="viewer off")
+        app.click("#nav-library")
+        app.until(lambda: app.count(".card") == 3)
+        app.js("[...document.querySelectorAll('.card')].find(c => /System Shock/.test(c.innerText)).click()")
+        app.until(lambda: app.count("#pf-content table.list tbody tr") >= 6, msg="file list")
+        LOG.write_text("")
+        app.js("[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Manual.pdf')).querySelector('[data-open]').click()")
+        app.until(lambda: any(a.startswith("OPEN") for a in actions()), msg="pdf external")
+        time.sleep(0.5)
+        check("…switched off: Open hands the PDF to the default application, no viewer window",
+              any(a.endswith("Manual.pdf") for a in actions()) and len(app.d.window_handles) == 1 and "Opened with the default application" in app.text("#sb-msg"))
+        app.click("#nav-settings")
+        app.click("#st-viewer")
+        app.until(lambda: json.loads(cfg_file.read_text()).get("builtinViewer") is True, msg="viewer on")
         app.click("#nav-library")
         app.until(lambda: app.count(".card") == 3)
         structure = "return [...document.querySelectorAll('button, input, select, a')].map(e => e.tagName + (e.id || e.className)).join('|')"
@@ -898,11 +1228,36 @@ def run():
             app.click("#nav-library")
             app.until(lambda: app.count(".card") == 3)
             check(f"{theme}: same controls as classic (appearance only)", app.js(structure) == classic_struct)
-            check(f"{theme}: monospace terminal font in use", "Consolas" in app.js("return getComputedStyle(document.body).fontFamily") or "monospace" in app.js("return getComputedStyle(document.body).fontFamily"))
+            body_font = app.js("return getComputedStyle(document.body).fontFamily")
+            check(f"{theme}: monospace terminal font in use (Classic's pixel font does not leak)",
+                  ("Consolas" in body_font or "monospace" in body_font) and "Pixel Operator" not in body_font, body_font)
+            if theme == "dos":
+                check("dos: IBM VGA text-mode font (PxPlus IBM VGA8) loaded, at its native 16px",
+                      body_font.startswith('"PxPlus IBM VGA8"')
+                      and app.js("return [...document.fonts].some(f => f.family.includes('PxPlus IBM VGA8') && f.status === 'loaded')")
+                      and app.js("return getComputedStyle(document.querySelector('.card .t')).fontSize") == "16px",
+                      body_font)
             app.shot(f"21-{theme}-library")
             app.js("[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('System Shock')).click()")
             app.until(lambda: app.count("#pf-content tbody tr") >= 6)
             app.shot(f"22-{theme}-profile")
+            if theme in ("matrix", "dos"):
+                main_win = app.d.current_window_handle
+                app.js("[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Main Theme')).querySelector('[data-open]').click()")
+                app.new_window([main_win])
+                app.until(lambda: app.count(".pl-track.on") == 1 and app.js("return document.getElementById('pl-audio').dataset.bytes || ''") != "", msg="player")
+                time.sleep(0.4)
+                app.shot(f"22b-{theme}-player")
+                wm_close("Music$")
+                app.until(lambda: len(app.d.window_handles) == 1, msg="player closed")
+                app.d.switch_to.window(main_win)
+                app.js("[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Manual.pdf')).querySelector('[data-open]').click()")
+                app.new_window([main_win])
+                app.until(lambda: app.count(".vw-page.drawn") >= 1, msg="viewer")
+                app.shot(f"22c-{theme}-viewer")
+                wm_close("^Manual")
+                app.until(lambda: len(app.d.window_handles) == 1, msg="viewer closed")
+                app.d.switch_to.window(main_win)
             app.click("#pf-edit")
             app.visible("#gf-title")
             app.shot(f"23-{theme}-dialog")
@@ -916,6 +1271,22 @@ def run():
         # leave the Matrix theme on: session 2 checks that it survives a restart
         app.click("#nav-library")
         app.until(lambda: app.count(".card") == 3)
+        # closing the main window closes the music player too, and the app ends cleanly
+        app.js("[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('System Shock')).click()")
+        app.until(lambda: app.count("#pf-content tbody tr") >= 6)
+        main_win = app.d.current_window_handle
+        app.js("[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Main Theme')).querySelector('[data-open]').click()")
+        app.new_window([main_win])
+        app.until(lambda: app.count(".pl-track.on") == 1, msg="player before closing")
+        app.closed = True
+        wm_close("^Game Curator 0.1$")
+        gone = False
+        for _ in range(50):
+            if subprocess.run(["pgrep", "-x", BIN.name[:15]], capture_output=True).returncode != 0:
+                gone = True
+                break
+            time.sleep(0.2)
+        check("closing the main window closes the player and the viewers with it; Game Curator ends", gone)
     except Exception:
         traceback.print_exc()
         check("session 1 completed without errors", False, traceback.format_exc(limit=2))
@@ -1162,6 +1533,9 @@ if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     try:
         run()
+    except Exception:
+        traceback.print_exc()
+        check("test run completed", False, traceback.format_exc(limit=3))
     finally:
         passed = sum(1 for r in RESULTS if r.get("ok") is True)
         failed = [r for r in RESULTS if r.get("ok") is False]
