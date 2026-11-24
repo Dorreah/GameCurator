@@ -1,13 +1,15 @@
-# Výsledky testování – Game Curator 0.1
+# Výsledky testování – Game Curator 0.2
 
-Datum: 20. 11. 2026 · prostředí: Ubuntu 24.04 (virtuální stroj, 2 vCPU,
+Datum: 23. 11. 2026 · prostředí: Ubuntu 24.04 (virtuální stroj, 2 vCPU,
 bez GPU), Rust 1.97, WebKitGTK 2.52 jako testovací harness · Windows build:
 cross-kompilace MinGW.
 
-Shrnutí: **51/51 automatických testů jádra a aplikace a 186/186 kontrol
+Shrnutí: **68/68 automatických testů jádra a aplikace a 250/250 kontrol
 end-to-end prošlo** (včetně převodu databáze z verze 0.1, výřezu obalu, dělicí čáry profilu,
 screenshotů, dodatečných souborů, názvů souborů v katalogu, ikon
-nainstalovaných her, nabídky zápisu po dohrání, volby písma, **čtečky PDF
+nainstalovaných her, nabídky zápisu po dohrání, volby písma, **češtiny a nápovědy k hledání složek her**, **filtru podle žánru
+a štítků**, **údajů o hrách z GOG.com, Databáze-her.cz a MobyGames**
+(proti místním napodobeninám), **čtečky PDF
 a hudebního přehrávače** (skutečné PDF a MP3/FLAC soubory, okna zavírána
 stejně jako tlačítkem ✕), kontrol minimalismu a 14 kontrol vzhledů (4 vzhledy, včetně pixelových písem Classic a DOS Midnight)). Testovala se skutečná aplikace (Rust backend + UI),
 ne mock. Všechny testy jsou v repozitáři a lze je zopakovat (`docs/BUILD.md`).
@@ -18,14 +20,20 @@ ne mock. Všechny testy jsou v repozitáři a lze je zopakovat (`docs/BUILD.md`)
 
 ## 1. Testy jádra (`cargo test -p curator-core`, `cargo test -p game-curator --features e2e`)
 
-22 unit testů (cesty s pravidly Windows, čištění názvů, vyhledávání bez
+36 unit testů (cesty s pravidly Windows, čištění názvů, vyhledávání bez
 diakritiky přes vlastní tabulku – čeština, němčina, polština, francouzština,
 rumunština, rozložené znaky, cyrilice –, kategorie souborů, odhad
 instalátoru, data, názvy záloh, párovací klíče nainstalovaných her, edice
 za pomlčkou, názvy z instalačních souborů, bezpečná jména kopií; typy PDF
-a hudby, přirozené řazení stop, názvy stop, čtení po částech) + 1 test
+a hudby, přirozené řazení stop, názvy stop, čtení po částech; GOG.com: párování
+názvů bez „The“, edic a interpunkce, pořadí produktů a jistota shody, popis
+z HTML na text, jen HTTPS adresy GOG, náhledy obalů, spojování jmen do délky
+pole; každý zdroj smí jen na své adresy, klíč MobyGames se nikdy neukáže, popisy
+nesou zdroj a licenci; Databáze-her.cz: adresy stránek jako na webu (diakritika,
+„&“, apostrofy, římské číslice), vložené adresy, čtení stránky hry; MobyGames:
+čtení her, žánrů a firem, adresy) + 1 test
 protokolu `gcimg` + 3 testy sledování hry (`session.rs`) + 1 test tokenů
-čtečky a přehrávače (`viewer.rs`) + 24 integračních testů (`crates/curator-core/tests/acceptance.rs`):
+čtečky a přehrávače (`viewer.rs`) + 1 test jazyka dialogů a titulků oken (`lang.rs`) + 26 integračních testů (`crates/curator-core/tests/acceptance.rs`):
 
 | Test | Ověřuje |
 |---|---|
@@ -33,7 +41,7 @@ protokolu `gcimg` + 3 testy sledování hry (`session.rs`) + 1 test tokenů
 | `archive_id_file_is_restored_and_mismatch_detected` | chybějící `.gamecurator-id` se obnoví z DB; cizí ID → nesoulad → adopce |
 | `t3_game_management_never_touches_the_folder` | přidání, artwork, úprava, štítky, odebrání; výpis souborů složky před a po je identický |
 | `duplicates_and_validation` | duplicitní složka, prázdný název, neexistující složka, složka `Data`, špatný rok |
-| `library_search_sort_facets_and_file_stats` | hledání „zaklinac“ → „Zaklínač 3“, escapování `%`, žádné filtry (staré klíče filtrů v JSON se ignorují), řazení podle roku/velikosti/data přidání, počty pro stavový řádek, počet a velikost souborů na hru (chybějící se nepočítají), „What I know“ |
+| `library_search_sort_facets_and_file_stats` | hledání „zaklinac“ → „Zaklínač 3“, escapování `%`, staré klíče filtrů stavu v JSON se ignorují; **filtr**: žánry z čárkového seznamu jednotlivě (i v nabídce s počty), bez ohledu na velikost písmen, diakritiku a mezery, kterýkoli ze žánrů, žánr + štítek = obojí, s hledáním, prázdné hodnoty = bez filtru, jen celé žánry, řazení zůstává; řazení podle roku/velikosti/data přidání, počty pro stavový řádek, počet a velikost souborů na hru (chybějící se nepočítají), „What I know“ |
 | `database_v1_is_upgraded_with_a_backup_and_no_data_loss` | databáze z verze 0.1 (se stavem, hodnocením, oblíbenými): převod na schéma 3 (výřez obalu, tabulka instalací), sloupce stavu odstraněny, název, poznámky, štítky i zápisky zachovány, `integrity_check` ok, záloha `pre-upgrade` obsahuje původní data, druhé otevření už nic nezálohuje |
 | `t4_archive_content_categories_primary_and_safety` | kategorie (EXE ≠ automaticky instalátor), vlastní kategorie, jediný hlavní instalátor, `..` i symlink mimo složku odmítnuty |
 | `missing_files_and_unavailable_folders_keep_their_records` | smazaný soubor → `is_missing`, odpojená složka → nedostupná, žádný záznam nesmazán, editace offline hry funguje |
@@ -48,12 +56,14 @@ protokolu `gcimg` + 3 testy sledování hry (`session.rs`) + 1 test tokenů
 | `icons_are_read_from_programs_without_running_them` | uměle sestavený program (PE32 se sekcí `.rsrc`): z první skupiny ikon se vezme největší obrázek (PNG 32 px před bitmapou 16 px), samotná bitmapa (32bit + maska) se přečte také a zvětší po celých pixelech na 48 px; „program“ bez hlaviček PE, useknutý soubor nebo chybějící program = žádná ikona, žádná chyba; soubor programu je po čtení bajt po bajtu stejný |
 | `installed_games_get_cached_icons_for_the_catalog` | `goggame-*.ico` ve složce instalace má přednost, ikona se uloží jako `Data/Thumbnails/icon-*.webp` (48 px) a podruhé se už nečte; bez `.ico` se vezme ikona programu a stará kopie se smaže; jiný počítač nic nečte; nepoužité ikony uklidí `cleanup_orphans`, odebrání hry smaže její ikonu; instalace se nezmění |
 | `files_get_names_in_the_catalog_while_the_files_keep_theirs` | název v katalogu pro soubor v Archive (sloučené mezery, přežije nové načtení složky), prázdný nebo shodný se souborem = zpět název souboru, příliš dlouhý / řídicí znaky / cizí hra odmítnuty; u dodatečného souboru název + druh + poznámka v jedné úpravě, odmítnutá úprava nic nezmění; soubory na disku mají pořád původní názvy |
+| `game_details_come_from_gog_and_fill_only_what_is_empty` | proti místní napodobenině GOG.com (odpovědi ve tvaru skutečného katalogu): hledání „Baldurs Gate 3“ najde „Baldur's Gate 3“ (100, jistá shoda), vadný záznam vynechá; popis z HTML na text, obal; v návrhu jsou zaškrtnutá jen prázdná pole (vlastní název a žánr ne), tagy bez opakování žánrů; uložení vyplní popis, vývojáře, vydavatele, rok, tagy a obal (WebP v `Data/Artwork`), název a žánr zůstanou, **soubory hry beze změny**; název až po zaškrtnutí (a hledání ho najde), hra s obalem si ho nechá, neznámé pole odmítnuto; popis ze staršího API, když nový chybí, při „429“ žádný; obal mimo GOG ani HTTP mimo test se nestáhne; GOG dostal jen slova názvu, User-Agent Game Curatoru, žádné cookies; bez internetu srozumitelná chyba; výběr her s chybějícími údaji |
+| `czech_and_english_descriptions_come_from_databaze_her_and_mobygames` | proti místním napodobeninám: Databáze-her.cz – „Baldurs Gate 3“ najde stránku `baldurs-gate-iii` (zkusí `baldurs-gate-3`, pak římské číslice; druhý název se počítá do shody), žánr, podžánr jako štítek, vývojář, rok, popis na text; čtou se jen stránky `/hry/…`, nikdy vyhledávání, User-Agent, žádné cookies; neznámá hra = nic, vložená adresa se přečte přímo, chyba serveru = hláška se jménem zdroje. MobyGames – hledání s klíčem, žánry (Basic Genres) a štítky, vývojář a vydavatel z vydání pro PC; špatný klíč = „API key“ bez ukázání klíče, „429“ = hláška s limitem 360 a konec běhu, bez klíče se nic nepošle. Revize: vlastní popis jen po zaškrtnutí, popis končí zdrojem a licencí, žádný obal ani vydavatel z Databáze-her.cz, stejný text se znovu nenabídne, **složka hry beze změny** |
 | `manuals_and_soundtracks_open_in_game_curator_read_only` | PDF → čtečka, `.exe` nikdy; playlist hry: hudba ze složky v přirozeném pořadí („Track 2“ před „Track 10“), názvy z katalogu, za ní hudební dodatečné soubory (ZIP ne); chybějící stopa vynechána (záznam zůstává), podvržený záznam `../outside.mp3` se nikdy nepřehraje; čtení manuálu po částech, soubor beze změny (obsah i čas úpravy) |
 | `viewer::tests` (aplikace) | stejný soubor = stejný token, zavřené okno = token zapomenut, playlist drží tokeny svých stop, label okna podle cesty |
 | `session::tests` (aplikace, Linux) | program zkopírovaný do složky instalace se pozná jako běžící, jiná složka ani kořen disku se nepočítají; launcher, který hned skončí, a hra, která běží dál: čeká se na hru, ne na launcher, a **konec se pozná do 0,6 s**; hra, která se objeví až 300 ms po skončení launcheru, se počká; když se neobjeví nic, sledování skončí po době předání; spuštěný program samotný se také počká |
 | `installed_games_are_detected_per_computer` | GOG záznam s ™ v názvu a `goggame-*.info` (program + argumenty, úloha s `..\` ignorována), záznam Windows s programem z `DisplayIcon`; „Gothic II“ ≠ „Gothic“, „Mafia: …“ ≠ „Mafia“, chybějící složka = nenalezeno; jiný počítač nic nevidí; ruční „Locate…“ (ne-.exe odmítnuto); po odinstalaci zmizí automatický záznam, ruční zůstane; chybějící program → srozumitelná chyba, nic se nemaže; „Forget“; odebrání hry smaže i záznamy instalací, soubory zůstanou |
 | `backups_auto_prune_and_restore` | auto záloha max 1×/24 h, rotace, ruční zálohy se nemažou, obnova + bezpečnostní záloha, vadná záloha nic nezmění |
-| `config_roundtrip_and_corruption` | uložení/načtení včetně vzhledu, starší `config.json` bez vzhledu → Classic, zrušené volby (úvodní obrazovka, řazení podle vývojáře) neresetují zbytek nastavení, neplatný vzhled odmítnut, šířka levého sloupce profilu (výchozí 42,5 %, oříznutí na 25–75 %), poškozený soubor → výchozí + `.bad` kopie |
+| `config_roundtrip_and_corruption` | uložení/načtení včetně vzhledu, **jazyk rozhraní** (výchozí angličtina, uložená čeština, neznámý jazyk odmítnut / při načtení → angličtina, zbytek nastavení zůstane), starší `config.json` bez vzhledu → Classic, zrušené volby (úvodní obrazovka, řazení podle vývojáře) neresetují zbytek nastavení, neplatný vzhled odmítnut, šířka levého sloupce profilu (výchozí 42,5 %, oříznutí na 25–75 %), poškozený soubor → výchozí + `.bad` kopie |
 | `t8_performance_with_500_games` | výkon dotazů (níže) |
 
 ## 2. End-to-end testy aplikace (`tests/e2e/run_e2e.py`)
@@ -65,7 +75,9 @@ nainstalovaných programů a název počítače přichází ze souboru (`GC_E2E_
 `GC_E2E_MACHINE`). Testovací PDF (3 strany, text ve standardním písmu,
 Letter i A4) a hudba (MP3 a FLAC, sinusový tón z ffmpeg) jsou skutečné
 soubory; okna čtečky a přehrávače se zavírají zprávou WM_DELETE_WINDOW
-(xdotool + Xlib) – stejně jako tlačítkem ✕. **186/186 OK.**
+(xdotool + Xlib) – stejně jako tlačítkem ✕. Odpovědi GOG.com, Databáze-her.cz
+a MobyGames dává místní napodobenina (`GC_E2E_GOG_BASE`, `GC_E2E_DBHER_BASE`,
+`GC_E2E_MOBY_BASE`). **250/250 OK.**
 
 **Relace 0 – databáze z verze 0.1**
 archiv s databází schématu 1 (hra „Completed“, hodnocení 5, oblíbená,
@@ -78,7 +90,8 @@ a zápisky zachovány.
 průvodce (3 kroky) · vytvoření `.gamecurator-id`, `Data/library.db`,
 `Data/WebView` (profil WebView na archivu) · uložení dokončení průvodce ·
 **uvítací okno** při startu (archivář a badatel, prožitek místo hodin
-a achievementů, soustředění, analýza, detaily) před průvodcem, „Don't show
+a achievementů, soustředění, analýza, detaily) před průvodcem, s volbou
+jazyka (English | Čeština, výchozí angličtina), „Don't show
 this again“ uloženo do `config.json` · uvítací panel prázdné knihovny · Add Game: výběr složky + návrh názvu, obal →
 WebP náhled (< 60 kB) zobrazený přes `gcimg://` · **editor výřezu** (rámeček 3:4,
 posuvník, Fit, Fill): široký obrázek tažením posunut k levému okraji → uložen
@@ -107,15 +120,47 @@ pořád `Manual.pdf` (je v nápovědě), „Use the file name“ ho vrátí · �
 a seznamem, datum = dnešek · úprava zápisku · HTML kopie v `Data/Journals` ·
 **skener**: 4 hry nalezeny, složka Docs ignorována, názvy očištěné · import
 3 z 4 (s rokem a obalem) · opakovaný sken = 3× „In catalog“, nelze znovu vybrat ·
-žádné duplicity v DB · **zrušení běžícího skenu** (40 000 složek) · hledání
-(„1 of 4“) · **žádné filtry** (stav, žánr, štítek, dostupnost) · řazení podle
+žádné duplicity v DB · po importu nabídka „Fetch their details from GOG.com“ ·
+**zrušení běžícího skenu** (40 000 složek) · hledání
+(„1 of 4“) · žádné filtry podle stavu ani dostupnosti · řazení podle
 roku a názvu · karty ukazují rok a velikost na disku · Catalog View: název,
 rok, žánr, počet souborů, velikost, složka (bez stavu) · **levé menu**: žádná
 horní lišta, 5 položek s SVG ikonami v pořadí Library, Gaming Journal,
 Archive Scanner, Settings, About · druhý zápisek napsaný v profilu jiné hry ·
 **stránka Gaming Journal** seskupí oba zápisky po hrách (novější hra nahoře,
 „1 entry“, „2 entries · 2 games“), nemá filtr ani New entry, klik na hru
-otevře její profil · **About**: hlavní myšlenka, motto, verze, umístění a ID
+otevře její profil · **údaje z GOG.com** (místní napodobenina GOG na
+127.0.0.1, `GC_E2E_GOG_BASE`): sekce na stránce skeneru s počty („Games with
+missing details (2)“, „All games (3)“) a vysvětlením, že jde o jedinou
+online funkci · výsledky: System Shock 2 „Found“, Disco Elysium „Check the
+match“ (GOG má „The Final Cut“), Baldurs Gate 3 „Not found“ · u hry
+s vlastními údaji nic zaškrtnuté, shoda ke kontrole se bez zaškrtnutí
+neuloží · výběr jiného nalezeného produktu · „Search again“ jinými slovy ·
+prázdná pole zaškrtnutá, vlastní název ne, náhled obalu · popis ze staršího
+API · uložení 2 her: hodnoty v DB, vlastní název, rok a obal zachované,
+System Shock 2 beze změny, soubory her nedotčené · GOG dostal jen názvy,
+User-Agent, žádné cookies · obal z GOG v knihovně, popis v profilu · bez
+internetu hláška „could not be reached“ a nic se neuloží · **české popisy
+z Databáze-her.cz a anglické z MobyGames**: tři zdroje na výběr (u MobyGames
+„API key: not set“), volba se pamatuje a tlačítko ji ukazuje · Databáze-her.cz:
+System Shock 2 nalezen, Baldurs Gate 3 přes římské číslice, Disco Elysium ne;
+čtou se jen stránky `/hry/…`, nikdy vyhledávání, bez cookies · vlastní popis
+zůstane, „Replace descriptions that are already filled in“ zaškrtne české popisy
+všech her · „Page ↗“ otevře stránku hry, „Search on Databáze-her.cz ↗“ hledání
+v prohlížeči, vložená adresa stránky hru najde · uložení: český popis
+s řádkem „— Zdroj: Databáze-her.cz, … (licence CC BY-NC-ND 3.0 CZ)“, ostatní
+údaje uživatele beze změny · MobyGames bez klíče: „Enter your MobyGames API key
+in Settings first.“ a nic se nepošle · odkaz „add it in Settings“ vede na pole
+klíče (skryté jako heslo) · špatný klíč: „did not accept the API key“, klíč se
+neukáže · se správným klíčem System Shock 2 nalezen s vývojáři z vydání, nic
+uživatelova nezaškrtnuto; API dostane klíč a nejvýš 1 dotaz za sekundu ·
+uložení anglického popisu s „Source: MobyGames, …“, vlastní vývojář zůstane ·
+**filtr knihovny**
+(trychtýř vedle Sort): žánry z čárkových seznamů jednotlivě s počty
+(„Role-playing 2“), štítky · jeden žánr, žánr + štítek (obojí), více žánrů
+(kterýkoli), odebrání filtru křížkem v liště · zavření kliknutím jinam,
+filtr trvá při procházení, i v Catalog View · nic neodpovídá → hláška
+a „Clear filters“ · pole Genre bez nápovědy z jiných her · **About**: hlavní myšlenka, motto, verze, umístění a ID
 archivu, zvýrazněná položka menu · Settings už údaje z About neduplikují ·
 **nainstalované hry**: „Look for installed games again“ najde Disco Elysium
 podle GOG záznamu „Disco Elysium - The Final Cut“ (7-Zip ignorován) ·
@@ -191,6 +236,23 @@ stavový řádek „2 offline“ · profil vysvětluje nedostupnost · záznamy 
 zachovány · **`Data/` odebrána za běhu** → stavový řádek „ARCHIVE DRIVE NOT
 AVAILABLE“ → po vrácení vše funguje · `PRAGMA integrity_check` = ok.
 
+**Relace 3b – čeština a nápověda k hledání složek her**
+`tools/check_i18n.py`: každý text rozhraní a každá zpráva z Rustu má český
+překlad (stejné zástupné symboly, tři tvary množného čísla) · výchozí je
+angličtina · Settings → Language nabízí English a Čeština · přepnutí
+přejmenuje celé okno naráz (levý sloupec, nadpis, stavový řádek „3 hry“)
+a uloží se do `config.json` · české Nastavení (názvy vzhledů zůstanou
+anglicky) · knihovna (Řazení, Filtr, Přidat hru) a okno filtru (Žánr, Tagy) ·
+**Skener archivu**: nápověda otevřená napoprvé (hlavní složka, jedna hra =
+jedna složka s ukázkovým stromem, jak se hra pozná, hloubka hledání, stavy
+výsledků) · hloubka 2 → „Prohledá až 2 úrovně složek: Hry\…\Hra“ ·
+nápovědu jde skrýt a skrytí se pamatuje · chyba z Rustu přijde česky i s
+cestou („Složka neexistuje: …“) · profil hry česky, počty souborů ve
+správném tvaru · ve formuláři hry je nápověda ke „Složka hry“ zavřená, po
+„?“ vysvětlí, jakou složku vybrat · pole Žánr stále bez nápovědy · čtečka PDF
+česky („Na šířku“, „3 strany“) · **po restartu zůstane čeština** · jedním
+klikem zpět do angličtiny.
+
 **Relace 4 – výkon s 500 hrami (test 8)**
 500 herních složek naskenováno a importováno přes UI skeneru, každá hra
 dostala obal, znovu spuštěno a změřeno · lazy loading · po zavření okna
@@ -202,7 +264,7 @@ Release build. Linux/WebKitGTK, softwarové vykreslování bez GPU.
 
 | Měření | Hodnota |
 |---|---|
-| Velikost aplikace | Windows `GameCurator.exe` **7,2 MB** (+ `WebView2Loader.dll` 160 kB u MinGW buildu; z toho ~1,1 MB pdf.js pro čtečku PDF) |
+| Velikost aplikace | Windows `GameCurator.exe` **8,9 MB** (+ `WebView2Loader.dll` 160 kB u MinGW buildu; z toho ~1,1 MB pdf.js pro čtečku PDF a ~1,2 MB HTTPS (rustls) pro údaje o hrách z internetu) |
 | Čtečka PDF: klik na Open → okno otevřené a první strana vykreslená | **1,2 s** (vč. vytvoření okna a WebView; softwarové vykreslování) |
 | Konec hry → okno nabídky zápisu do deníku | **1,3 s** (0,75 s ověření konce + vytvoření okna a WebView) |
 | Start aplikace → zobrazeno 500 karet s obaly (vč. zjištění nainstalovaných her a jejich ikon) | **0,8–1,4 s** (běhy po sobě; virtuální stroj kolísá) |
@@ -266,6 +328,15 @@ procesový model a čísla tam budou jiná. Je potřeba je změřit na Windows
 * skutečné čtení registru Windows (v E2E se seznam programů načte ze souboru;
   kód pro registr je jen přeložený a typově zkontrolovaný),
 * fyzické odpojení USB disku (simulováno přejmenováním složek),
+* **skutečné Databáze-her.cz a MobyGames**: aplikace se k nim nepřipojila.
+  Struktura stránek Databáze-her.cz je převzatá ze skutečných stránek (prohlédnutých
+  v prohlížeči), odpovědi MobyGames podle dokumentace API (bez klíče je nešlo
+  vyzkoušet). Ověřit v bodě 14 níže,
+* **skutečný GOG.com**: testovací prostředí nemá přístup na internet, takže
+  aplikace se ke GOG.com nikdy nepřipojila. Tvar odpovědi katalogu je převzatý
+  ze skutečné odpovědi; pole `description` v `api.gog.com/v2/games` je podle
+  komunitní dokumentace (při jeho absenci se použije starší API). Ověřit při
+  prvním testu na Windows (bod 13 níže), stejně jako HTTPS (rustls) na Windows,
 * okno nabídky zápisu „vždy navrchu“ nad jiným programem: Xvfb bez správce
   oken žádné okno nad jiným nedrží, takže to tu ověřit nejde (testuje se, že
   okno vznikne do 2 s od konce hry a funguje),
@@ -274,7 +345,7 @@ procesový model a čísla tam budou jiná. Je potřeba je změřit na Windows
 
 ## 5. Kontrolní seznam pro první test na Windows
 
-1. Rozbalte `GameCurator-0.1.0-windows-portable.zip` na USB disk, spusťte
+1. Rozbalte `GameCurator-0.2.0-windows-portable.zip` na USB disk, spusťte
    `GameCurator.exe` → průvodce. Ověřte, že v `%LOCALAPPDATA%` nevznikla
    složka `cz.gamecurator.archive` a vše je v `GAME_CURATOR\Data`.
 2. Přidejte 2–3 hry (jednu v `Games\`, jednu v `X:\GOG_Installers\…`),
@@ -309,3 +380,13 @@ procesový model a čísla tam budou jiná. Je potřeba je změřit na Windows
 12. Nabídka po dohrání: spusťte hru přes ▶ Play, chvíli hrajte (aspoň 15 s),
     přepněte (Alt+Tab) do jiného programu a hru ukončete – okno „Back from
     the game“ se má do sekundy ukázat navrchu, aniž by vám vzalo klávesnici.
+13. Údaje z GOG.com: na stránce Archive Scanner zvolte „All games“ a stiskněte
+    **Fetch details from GOG.com**. Našly se vaše hry, byl vybrán správný
+    produkt, mají popis a obal? Zkuste „Search again“ u hry, která se nenašla,
+    a uložte jen část zaškrtnutých údajů. Pak vypněte internet a zkuste to
+    znovu – má přijít hláška, že GOG.com není dostupný.
+14. České a anglické popisy: zvolte **Databáze-her.cz** a načtěte údaje – mají
+    nalezené hry český popis se zdrojem pod ním? U nenalezené hry použijte
+    „Search on Databáze-her.cz ↗“ a vložte adresu stránky do „Search again“.
+    Pak v Nastavení zadejte svůj MobyGames API klíč, zvolte **MobyGames**
+    a načtěte údaje – přišly anglické popisy, vývojáři a vydavatelé?

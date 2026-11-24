@@ -1,4 +1,4 @@
-# Známá omezení – Game Curator 0.1
+# Známá omezení – Game Curator 0.2
 
 ## Ověření na Windows
 
@@ -32,11 +32,11 @@
   s pořádkem v archivu a ke kurátorské práci, ne tlačit k dohrávání. Vlastní
   skupiny her lze popsat štítky. Databáze z verze 1 se převede, předtím se
   vždy uloží záloha.
-* **Bez filtrů v knihovně.** Zadání počítalo s filtry podle stavu, žánru,
-  štítků a dostupnosti. Na přání byly odstraněny všechny: knihovna má jen
-  hledání podle názvu a řazení. Štítky a žánr zůstávají jako popis hry
-  v profilu. Počet nedostupných (OFFLINE) her ukazuje stavový řádek
-  a karty jsou označené.
+* **Filtr jen podle žánru a štítků.** Zadání počítalo s filtry podle stavu,
+  žánru, štítků a dostupnosti. Filtry podle stavu a dostupnosti byly na
+  přání odstraněny; od verze 0.2 knihovna filtruje podle žánru a štítků
+  (tlačítko s trychtýřem vedle Sort). Počet nedostupných (OFFLINE) her
+  ukazuje stavový řádek a karty jsou označené.
 * **Bez horní lišty.** Jediné menu je levý sloupec s ikonami (Library,
   Gaming Journal, Archive Scanner, Settings, About). Informace o aplikaci
   a archivu se přesunuly ze Settings na stránku About.
@@ -53,6 +53,20 @@
 
 ## Funkce
 
+* **Jazyk rozhraní**: angličtina a čeština (od 0.2). Překládá se rozhraní
+  a zprávy aplikace; data uživatele (názvy her, popisy, poznámky, žánry,
+  tagy) a údaje stažené z internetu zůstávají, jak jsou – GOG.com
+  a MobyGames posílají anglické texty, Databáze-her.cz české. Datum se v obou jazycích píše „22. 11. 2026“, velikosti
+  souborů s desetinnou tečkou (1.3 MB). Chybové hlášky knihoven třetích stran
+  (např. pdf.js u poškozeného PDF, WebView2) a hlášky Windows mimo známé
+  kódy chyb zůstanou anglicky. Okno nabídky zápisu, které už je otevřené,
+  přepne jazyk okamžitě, jeho titulek v liště Windows ale až při dalším
+  otevření. Čeština je psaná s tykáním.
+* **Nápověda ke skeneru** popisuje pravidla rozpoznání her (instalátor
+  přímo ve složce, generické podsložky, jen archivy). Sbírky uspořádané
+  jinak (např. všechny instalátory v jedné společné složce bez podsložek
+  pro hry) skener rozpozná jako jednu „hru“ – takové hry je lepší přidat
+  ručně nebo nejdřív rozdělit do složek.
 * **Screenshoty** se ukládají jako WebP s kvalitou 90 (do 3840 px), ne jako
   bezeztrátové originály – pro vzpomínky stačí a zabírají zlomek místa.
   Originál zůstává, kde byl. Obrázky jde vybrat v dialogu nebo přetáhnout
@@ -106,12 +120,13 @@
   neupraví; rámeček je ořízne na střed jako dřív.
 
 5. **Artwork = jen obal hry.** Složky `Artwork/Backgrounds` a `Artwork/Logos`
-   se vytváří podle zadané struktury, ale verze 0.1 je ještě nepoužívá.
+   se vytváří podle zadané struktury, ale verze 0.2 je ještě nepoužívá.
 6. **Rozhraní je v angličtině**, protože zadání pojmenovává obrazovky
    a tlačítka anglicky (Library, Add Game, Open Folder…). Dokumentace je
    česky. Lokalizace by byla nová funkce.
-7. Žánr je jedno textové pole; pro více žánrů slouží štítky. Obojí je jen
-   popis v profilu, knihovna podle nich nefiltruje.
+7. Žánr je jedno textové pole (max. 100 znaků), více žánrů se odděluje
+   čárkou. Filtr v knihovně je bere jednotlivě, ale celé: „Open“ nenajde
+   „Open world“. Výběr filtru se po zavření aplikace nepamatuje.
 8. Skener: když leží instalátory více her **přímo ve zvolené složce** (bez
    podsložek), vznikne jeden kandidát. Kandidáta nelze rozdělit. Hloubka
    hledání 1–5 úrovní.
@@ -127,6 +142,39 @@
 12. Editor deníku používá `document.execCommand` (zastaralé API, ale ve
     WebView2 i WebKitu stále podporované). Formátování: odstavce, 2 úrovně
     nadpisů, odrážky, číslování, tučné, kurzíva, podtržení, citace.
+11a. **Údaje z GOG.com stojí na neoficiálních rozhraních obchodu GOG.**
+    Katalog (`catalog.gog.com`) i produktová data (`api.gog.com`) nejsou
+    veřejně dokumentovaná a GOG je může změnit; pak hledání přestane
+    fungovat, dokud se aplikace neupraví (nic se tím nepoškodí). Tvar
+    odpovědi katalogu je ověřený podle skutečné odpovědi, ale aplikace sama
+    se při vývoji ke skutečnému GOG.com nepřipojila (testovací prostředí
+    nemá přístup na internet; testuje se proti místní napodobenině). Hledá se
+    podle názvu, takže hra s výrazně jiným názvem se musí dohledat přes
+    „Search again“ a hry, které GOG neprodává, se nenajdou. Popisy jsou
+    anglicky; starší produktové API má limit kolem 200 dotazů za hodinu
+    (popis se pak vynechá). Proxy nastavená ve Windows se nepoužívá (platí
+    pro všechny tři zdroje).
+11b. **Databáze-her.cz se čte z veřejných stránek her, bez vyhledávání.**
+    Web nemá API a své vyhledávání zakazuje robotům (`robots.txt`), takže
+    Game Curator adresu stránky odvodí z názvu (a zkusí římské číslice).
+    Hra s jiným názvem než na webu (podtitul, jiný překlad, „The Final Cut“)
+    se tak nenajde – adresu její stránky je potřeba vložit do „Search again“
+    (pomůže „Search on Databáze-her.cz ↗“). Údaje se čtou z HTML stránky:
+    když web změní vzhled, čtení přestane fungovat, dokud se aplikace
+    neupraví. Při vývoji byla ověřena struktura skutečných stránek
+    v prohlížeči, ale aplikace sama se ke skutečnému webu nepřipojila.
+    Vydavatele ani obal zdroj nenabízí. Popisy jsou pod licencí
+    CC BY-NC-ND 3.0 CZ: jsou jen pro vlastní nekomerční katalog a zdroj
+    pod popisem by se neměl mazat.
+11c. **MobyGames potřebuje vlastní API klíč.** Klíč se získá po přihlášení
+    na mobygames.com (profil → API); MobyGames ho může podmínit placeným
+    MobyPro. Limit 360 dotazů za hodinu znamená asi 150–180 her za hodinu
+    (na hru 1–3 dotazy); po překročení se hledání zastaví s hláškou a stačí
+    to zkusit později. Klíč je v `Data/config.json` čitelně (jako zbytek
+    nastavení přenosné aplikace) – kdo má přístup k disku, může ho přečíst.
+    Aplikace se ke skutečnému MobyGames API při vývoji nepřipojila (bez
+    klíče a internetu); tvar odpovědí je podle dokumentace API. Obal se
+    z MobyGames nebere.
 12a. **Čtečka PDF je na čtení, ne na práci s PDF.** Umí stránky, zoom
     a listování; neumí vyhledávání v textu, výběr a kopírování textu,
     obsah (záložky), odkazy, formuláře, tisk ani PDF chráněné heslem pro

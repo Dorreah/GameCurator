@@ -48,7 +48,8 @@ Změny v `ui/` se projeví po novém `cargo build` (soubory se vkládají do exe
   diskové cache (méně paměti, CPU a zápisů na USB disk).
 
 Výsledek (cross-build MinGW): **5,4 MB** místo předchozích 6,8 MB; s pozdějšími funkcemi
-(pixelová písma, ikony, čtečka PDF s pdf.js ~1,1 MB) dnes **7,2 MB**.
+(pixelová písma, ikony, čtečka PDF s pdf.js ~1,1 MB, HTTPS přes rustls pro údaje o hrách ~1,2 MB) dnes **8,9 MB**.
+Knihovna `ring` (kryptografie pro rustls) se při cross-buildu kompiluje MinGW překladačem.
 
 ## Cross-build z Linuxu (MinGW-w64)
 
@@ -80,9 +81,13 @@ importuje jen `WebView2Loader.dll` (ověřeno přes `objdump -p`).
 ## Testy
 
 ```bash
-cargo test -p curator-core              # 22 unit + 24 integračních testů (libovolný OS)
+cargo test -p curator-core              # 28 unit + 25 integračních testů (libovolný OS)
 cargo test -p curator-core --release t8 -- --nocapture   # výkon jádra (500 her)
 ```
+
+Překlad do češtiny ověří `python3 tools/check_i18n.py` (potřebuje Node.js):
+každý text rozhraní i každá zpráva z Rustu musí mít český překlad se stejnými
+zástupnými symboly. E2E test ho spouští taky.
 
 Jádro (`crates/curator-core`) je čistý Rust bez GUI; pravidla cest jsou
 napevno windowsová (nerozlišuje velikost písmen, `\` = `/`), takže testy na
@@ -93,7 +98,10 @@ libovolném systému ověřují chování na Windows.
 Skutečná aplikace na WebKitGTK ovládaná přes WebDriver. Jen pro testy,
 nikdy pro distribuci (featura `e2e` nahrazuje nativní dialogy cestou ze
 souboru `GC_E2E_PICK_FILE` a akce Open/Run zapisuje do `GC_E2E_ACTION_LOG`;
-UI to ve stavovém řádku označí „test build“).
+hledání údajů o hrách jde na místní napodobeninu z `GC_E2E_GOG_BASE`,
+`GC_E2E_DBHER_BASE` a `GC_E2E_MOBY_BASE` (i přes HTTP), kterou si test spustí
+sám; odkazy do prohlížeče se jen zapíšou do logu jako `OPENURL`; UI to ve
+stavovém řádku označí „test build“).
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev librsvg2-dev libssl-dev \
@@ -111,6 +119,9 @@ python3 tests/e2e/run_e2e.py target/release/GameCurator /tmp/e2e-out
 (vlastní protokol `gcimg:`), do Windows buildu se nedostane.
 
 ## Pomocné skripty
+
+* `tools/check_i18n.py` – kontrola úplnosti českého překladu
+  (`ui/js/lang/cs.js`) proti textům v UI a zprávám z Rustu
 
 * `tools/make_icons.py src-tauri/icons` – ikony (Pillow)
 * `tools/make_matrix_rain.py ui/img/matrix-rain.svg` – statická textura

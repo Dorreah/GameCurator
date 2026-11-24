@@ -111,11 +111,67 @@ pub struct GamePatch {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LibraryQuery {
-    /// Title search (case and diacritics insensitive). There are deliberately
-    /// no filters: the library is browsed as one whole archive.
+    /// Title search (case and diacritics insensitive).
     pub search: Option<String>,
     /// title | year | added | size
     pub sort: Option<String>,
+    /// Filter: games with any of these genres (the genre field holds several,
+    /// separated by commas).
+    pub genres: Vec<String>,
+    /// Filter: games with any of these tags. With genres too, a game needs
+    /// both: one of the genres and one of the tags.
+    pub tags: Vec<String>,
+}
+
+/// The genres in a genre field: "Role-playing, Strategy" -> both.
+pub fn split_genres(genre: &str) -> Vec<String> {
+    genre.split(',').map(text::tidy).filter(|g| !g.is_empty()).collect()
+}
+
+/// Comparison key for genre and tag names (case and diacritics insensitive).
+fn name_key(s: &str) -> String {
+    text::search_key(&text::tidy(s))
+}
+
+/// Ids of the games that pass the genre and tag filter (`None` = no filter).
+fn filtered_ids(conn: &Connection, q: &LibraryQuery) -> Result<Option<std::collections::HashSet<i64>>> {
+    let genres: std::collections::HashSet<String> = q.genres.iter().map(|g| name_key(g)).filter(|g| !g.is_empty()).collect();
+    let tags: std::collections::HashSet<String> = q.tags.iter().map(|t| name_key(t)).filter(|t| !t.is_empty()).collect();
+    if genres.is_empty() && tags.is_empty() {
+        return Ok(None);
+    }
+    let mut by_genre: Option<std::collections::HashSet<i64>> = None;
+    if !genres.is_empty() {
+        let mut stmt = conn.prepare("SELECT id, genre FROM games WHERE genre <> ''")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        let mut ids = std::collections::HashSet::new();
+        for row in rows {
+            let (id, genre) = row?;
+            if split_genres(&genre).iter().any(|g| genres.contains(&name_key(g))) {
+                ids.insert(id);
+            }
+        }
+        by_genre = Some(ids);
+    }
+    let mut by_tag: Option<std::collections::HashSet<i64>> = None;
+    if !tags.is_empty() {
+        let mut stmt = conn.prepare("SELECT gt.game_id, t.name FROM game_tags gt JOIN tags t ON t.id = gt.tag_id")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        let mut ids = std::collections::HashSet::new();
+        for row in rows {
+            let (id, name) = row?;
+            if tags.contains(&name_key(&name)) {
+                ids.insert(id);
+            }
+        }
+        by_tag = Some(ids);
+    }
+    Ok(Some(match (by_genre, by_tag) {
+        (Some(g), Some(t)) => g.intersection(&t).copied().collect(),
+        (Some(g), None) => g,
+        (None, Some(t)) => t,
+        (None, None) => unreachable!(),
+    }))
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -252,7 +308,7 @@ pub fn normalize_tags(tags: &[String]) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn set_tags(tx: &Transaction, game_id: i64, tags: &[String]) -> Result<()> {
+pub(crate) fn set_tags(tx: &Transaction, game_id: i64, tags: &[String]) -> Result<()> {
     tx.execute("DELETE FROM game_tags WHERE game_id = ?1", [game_id])?;
     for tag in tags {
         tx.execute("INSERT INTO tags (name) VALUES (?1) ON CONFLICT(name) DO NOTHING", [tag])?;
@@ -637,7 +693,10 @@ pub fn list_games(conn: &Connection, q: &LibraryQuery, machine: &str) -> Result<
     });
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_from_iter(args.iter()), card_from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
+    Ok(match filtered_ids(conn, q)? {
+        Some(ids) => rows.into_iter().filter(|g| ids.contains(&g.id)).collect(),
+        None => rows,
+    })
 }
 
 pub fn library_facets(conn: &Connection) -> Result<LibraryFacets> {
@@ -653,12 +712,26 @@ pub fn library_facets(conn: &Connection) -> Result<LibraryFacets> {
             })
         },
     )?;
-    let mut stmt = conn.prepare(
-        "SELECT MIN(genre), COUNT(*) FROM games WHERE genre <> '' GROUP BY genre COLLATE NOCASE ORDER BY genre COLLATE NOCASE",
-    )?;
-    f.genres = stmt
-        .query_map([], |r| Ok(NameCount { name: r.get(0)?, count: r.get(1)? }))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+    // each genre of "Role-playing, Strategy" counts on its own; "RPG" and
+    // "rpg" are one genre (shown as first written)
+    let mut stmt = conn.prepare("SELECT genre FROM games WHERE genre <> '' ORDER BY id")?;
+    let mut genres: Vec<(String, NameCount)> = Vec::new();
+    for genre in stmt.query_map([], |r| r.get::<_, String>(0))? {
+        let genre = genre?;
+        let mut seen = std::collections::HashSet::new();
+        for g in split_genres(&genre) {
+            let key = name_key(&g);
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+            match genres.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, nc)) => nc.count += 1,
+                None => genres.push((key, NameCount { name: g, count: 1 })),
+            }
+        }
+    }
+    genres.sort_by(|a, b| a.0.cmp(&b.0));
+    f.genres = genres.into_iter().map(|(_, nc)| nc).collect();
     let mut stmt = conn.prepare(
         "SELECT t.name, COUNT(gt.game_id) FROM tags t JOIN game_tags gt ON gt.tag_id = t.id
          GROUP BY t.id ORDER BY t.name COLLATE NOCASE",

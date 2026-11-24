@@ -196,7 +196,7 @@ fn library_search_sort_facets_and_file_stats() {
     let mafia = mk(&mut a, "Mafia", "Action", &["czech"]);
     mk(&mut a, "Vietcong", "Shooter", &["czech"]);
     mk(&mut a, "Baldur's Gate 3", "rpg", &[]);
-    let q = |search: Option<&str>, sort: Option<&str>| LibraryQuery { search: search.map(Into::into), sort: sort.map(Into::into) };
+    let q = |search: Option<&str>, sort: Option<&str>| LibraryQuery { search: search.map(Into::into), sort: sort.map(Into::into), ..Default::default() };
     let titles = |v: Vec<games::GameCard>| v.into_iter().map(|g| g.title).collect::<Vec<_>>();
     {
         let c = a.db.conn().unwrap();
@@ -205,13 +205,47 @@ fn library_search_sort_facets_and_file_stats() {
         assert_eq!(games::list_games(c, &q(Some("%"), None), "TEST-PC").unwrap().len(), 0, "wildcards are escaped");
         assert_eq!(titles(games::list_games(c, &q(None, None), "TEST-PC").unwrap()), vec!["Baldur's Gate 3", "Mafia", "Vietcong", "Zaklínač 3"]);
         assert_eq!(games::list_games(c, &q(None, Some("added")), "TEST-PC").unwrap()[0].title, "Baldur's Gate 3");
-        // the whole archive is always listed: unknown/old filter fields are simply ignored
+        // old filter fields (play status of 0.1) are simply ignored
         let legacy: LibraryQuery = serde_json::from_str(r#"{"filter":"completed","tag":"czech","genre":"RPG"}"#).unwrap();
         assert_eq!(games::list_games(c, &legacy, "TEST-PC").unwrap().len(), 4);
         let f = games::library_facets(c).unwrap();
         assert_eq!((f.total, f.unavailable), (4, 0));
         assert_eq!(f.genres.iter().find(|g| g.name.eq_ignore_ascii_case("rpg")).unwrap().count, 2, "genre suggestions for the form");
         assert_eq!(f.tags.iter().find(|t| t.name == "czech").unwrap().count, 2, "tag suggestions for the form");
+    }
+    // ---- filtering by genre and tags
+    {
+        let c = a.db.conn().unwrap();
+        c.execute("UPDATE games SET genre = 'Action, Akční hra , Open world' WHERE title = 'Mafia'", []).unwrap();
+        c.execute("UPDATE games SET genre = 'RPG,Strategy' WHERE title = 'Baldur''s Gate 3'", []).unwrap();
+        let f = games::library_facets(c).unwrap();
+        let g: Vec<(String, i64)> = f.genres.iter().map(|n| (n.name.clone(), n.count)).collect();
+        assert_eq!(
+            g,
+            [("Action".into(), 1), ("Akční hra".into(), 1), ("Open world".into(), 1), ("RPG".into(), 2), ("Shooter".into(), 1), ("Strategy".into(), 1)],
+            "each genre of a comma list counts on its own"
+        );
+        let fq = |genres: &[&str], tags: &[&str], search: Option<&str>| LibraryQuery {
+            search: search.map(Into::into),
+            genres: genres.iter().map(|s| s.to_string()).collect(),
+            tags: tags.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
+        let list = |q: LibraryQuery| titles(games::list_games(c, &q, "TEST-PC").unwrap());
+        assert_eq!(list(fq(&["rpg"], &[], None)), ["Baldur's Gate 3", "Zaklínač 3"], "any case");
+        assert_eq!(list(fq(&["Strategy", "Shooter"], &[], None)), ["Baldur's Gate 3", "Vietcong"], "any of the genres");
+        assert_eq!(list(fq(&["akcni hra"], &[], None)), ["Mafia"], "diacritics and spaces don't matter");
+        assert_eq!(list(fq(&[], &["CZECH"], None)), ["Mafia", "Vietcong"]);
+        assert_eq!(list(fq(&["Shooter", "RPG"], &["czech"], None)), ["Vietcong"], "a genre and a tag: both needed");
+        assert_eq!(list(fq(&["RPG"], &["czech"], None)), Vec::<String>::new());
+        assert_eq!(list(fq(&[], &["czech"], Some("maf"))), ["Mafia"], "with the title search");
+        assert_eq!(list(fq(&[" ", ""], &[], None)).len(), 4, "empty values are no filter");
+        assert_eq!(list(fq(&["Open"], &[], None)), Vec::<String>::new(), "whole genres only");
+        let mut sorted = fq(&["RPG", "Action"], &[], None);
+        sorted.sort = Some("added".into());
+        assert_eq!(list(sorted), ["Baldur's Gate 3", "Mafia", "Zaklínač 3"], "the sort order stays");
+        assert_eq!(games::split_genres(" RPG ,, Strategy,"), ["RPG", "Strategy"]);
+        let _ = mafia;
     }
 
     // file statistics per game (missing files are not counted), size sort
@@ -678,6 +712,17 @@ fn config_roundtrip_and_corruption() {
     assert!(old.builtin_viewer && odd.builtin_viewer, "on by default, also for older files");
     fs::write(&path, r#"{"builtinViewer":false}"#).unwrap();
     assert!(!curator_core::config::load(&path).builtin_viewer);
+    // interface language: English unless Czech was chosen; unknown values fall back
+    assert_eq!((old.language.as_str(), odd.language.as_str()), ("en", "en"), "English for older files");
+    let mut cs = cfg.clone();
+    cs.language = "cs".into();
+    curator_core::config::save(&path, &cs.clone().validate().unwrap()).unwrap();
+    assert_eq!(curator_core::config::load(&path).language, "cs");
+    cs.language = "de".into();
+    assert!(cs.validate().is_err(), "only English and Czech exist");
+    fs::write(&path, r#"{"language":"klingon","theme":"dos"}"#).unwrap();
+    let k = curator_core::config::load(&path);
+    assert_eq!((k.language.as_str(), k.theme.as_str()), ("en", "dos"));
     // options removed in later versions do not reset the rest of the settings
     fs::write(&path, r#"{"theme":"amber","viewMode":"catalog","startScreen":"journal","sort":"developer","cardSize":"large"}"#).unwrap();
     let legacy = curator_core::config::load(&path);
@@ -1445,4 +1490,288 @@ fn manuals_and_soundtracks_open_in_game_curator_read_only() {
     assert_eq!(media::read_range(&manual, 9, 100).unwrap(), b"manual");
     assert_eq!(fs::read(&manual).unwrap(), b"%PDF-1.4 manual");
     assert_eq!(fs::metadata(&manual).unwrap().modified().unwrap(), before);
+}
+
+/// A tiny stand-in for GOG.com: answers by path and records what it was asked.
+struct MockGog {
+    base: String,
+    seen: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+fn mock_gog(routes: Vec<(&'static str, u16, &'static str, Vec<u8>)>) -> MockGog {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let me = base.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                continue;
+            }
+            let target = line.split_whitespace().nth(1).unwrap_or("").to_string();
+            let mut headers = String::new();
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).unwrap_or(0) == 0 || h == "\r\n" {
+                    break;
+                }
+                headers.push_str(&h);
+            }
+            log.lock().unwrap().push(format!("{target}\n{headers}"));
+            let path = target.split('?').next().unwrap_or("");
+            let decoded = url::form_urlencoded::parse(target.split('?').nth(1).unwrap_or("").as_bytes())
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("&");
+            let (status, ctype, body) = routes
+                .iter()
+                .find(|(p, ..)| {
+                    let (rp, rq) = p.split_once('?').unwrap_or((p, ""));
+                    rp == path && (rq.is_empty() || decoded.contains(rq))
+                })
+                .map(|(_, s, c, b)| (*s, *c, b.clone()))
+                .unwrap_or((404, "text/plain", b"not found".to_vec()));
+            let body = if ctype.starts_with("application/json") || ctype.starts_with("text/html") { String::from_utf8_lossy(&body).replace("{BASE}", &me).into_bytes() } else { body };
+            let head = format!("HTTP/1.1 {status} X\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(&body);
+        }
+    });
+    MockGog { base, seen }
+}
+
+#[test]
+fn game_details_come_from_gog_and_fill_only_what_is_empty() {
+    use curator_core::gog::{self, Client, Endpoints, NetError, Source};
+    // the shape of a real catalog answer (catalog.gog.com/v1/catalog), shortened
+    let catalog = r#"{"pages":1,"productCount":3,"products":[
+        {"id":"1086940","slug":"baldurs_gate_enhanced_edition","title":"Baldur's Gate: Enhanced Edition","releaseDate":"2012.11.28",
+         "developers":["Beamdog"],"publishers":["Atari"],"genres":[{"name":"Role-playing","slug":"rpg"}],"tags":[],"productType":"game",
+         "storeLink":"https://www.gog.com/en/game/baldurs_gate_enhanced_edition","coverVertical":"{BASE}/covers/bg1.png"},
+        {"id":"1456460669","slug":"baldurs_gate_iii","title":"Baldur's Gate 3","releaseDate":"2023.08.03",
+         "developers":["Larian Studios"],"publishers":["Larian Studios"],
+         "genres":[{"name":"Role-playing","slug":"rpg"},{"name":"Strategy","slug":"strategy"}],
+         "tags":[{"name":"Fantasy","slug":"fantasy"},{"name":"Role-playing","slug":"role-playing"},{"name":"Story Rich","slug":"story-rich"},{"name":"Co-op","slug":"co-op"}],
+         "productType":"game","storeLink":"https://www.gog.com/en/game/baldurs_gate_iii","coverVertical":"{BASE}/covers/bg3.png",
+         "price":{"final":"$59.99"},"reviewsRating":48},
+        {"id":"x","title":"Broken entry"}]}"#;
+    let mock = mock_gog(vec![
+        ("/v1/catalog?query=like:baldurs gate 3", 200, "application/json", catalog.as_bytes().to_vec()),
+        ("/v2/games/1456460669", 200, "application/json", br#"{"description":"<p><b>Gather your party</b> and return to the Forgotten Realms.</p><ul><li>Play solo</li><li>Co-op</li></ul>","_embedded":{}}"#.to_vec()),
+        ("/covers/bg3.png", 200, "image/png", png_bytes(300, 400, [120, 60, 30])),
+        ("/v2/games/1086940", 404, "text/plain", b"nope".to_vec()),
+        ("/products/1086940", 200, "application/json", br#"{"title":"x","description":{"lead":"Lead text","full":"<p>The original saga.</p>","whats_cool_about_it":""}}"#.to_vec()),
+        ("/v2/games/7", 404, "text/plain", b"nope".to_vec()),
+        ("/products/7", 429, "text/plain", b"slow down".to_vec()),
+    ]);
+    let fx = Fixture::new();
+    let mut a = fx.open("D");
+    let dir = a.layout.games_dir().join("Baldurs Gate 3");
+    make_game_folder(&dir, "baldurs_gate_3");
+    let id = add_game(&mut a, "Baldurs Gate 3", &dir);
+    {
+        let conn = a.db.conn().unwrap();
+        conn.execute("UPDATE games SET genre = 'RPG' WHERE id = ?1", [id]).unwrap();
+    }
+    let before: Vec<_> = walk(&dir);
+
+    let ep = Endpoints { catalog: mock.base.clone(), api: mock.base.clone(), allow_local_http: true };
+    let client = Client::new(ep.clone());
+    let found = client.search("Baldurs Gate 3").unwrap();
+    assert_eq!(found.len(), 2, "the broken entry is left out");
+    assert_eq!((found[0].id.as_str(), found[0].score), ("1456460669", 100));
+    assert!(gog::confident(&found));
+    assert_eq!(found[0].year, Some(2023));
+    assert_eq!(found[0].genres, ["Role-playing", "Strategy"]);
+    let best = found[0].clone();
+    assert_eq!(best.cover, Some(format!("{}/covers/bg3.png", mock.base)));
+    let description = client.description(&best.id).unwrap();
+    assert_eq!(description.as_deref(), Some("Gather your party and return to the Forgotten Realms.\n\n\u{2022} Play solo\n\u{2022} Co-op"));
+    let cover = client.cover(&best).unwrap().unwrap();
+    let details = gog::Details { source: Source::Gog, product: best.clone(), description, has_cover: true };
+
+    // the review: empty fields ticked, the user's own title and genre not
+    let cur = gog::current(a.db.conn().unwrap(), id).unwrap();
+    let changes = gog::propose(&cur, &details);
+    let ticked = |f: &str| changes.iter().find(|c| c.field == f).map(|c| c.selected);
+    assert_eq!(ticked("title"), Some(false), "Baldurs Gate 3 -> Baldur's Gate 3 only when ticked");
+    assert_eq!(ticked("genre"), Some(false), "the user's genre stays");
+    for f in ["description", "developer", "publisher", "year", "tags", "cover"] {
+        assert_eq!(ticked(f), Some(true), "{f}");
+    }
+    let tags = changes.iter().find(|c| c.field == "tags").unwrap();
+    assert_eq!(tags.proposed, "Fantasy, Story Rich, Co-op", "the genre is not repeated as a tag");
+
+    let selected: Vec<String> = changes.iter().filter(|c| c.selected).map(|c| c.field.clone()).collect();
+    let layout = a.layout.clone();
+    let saved = gog::apply(a.db.conn().unwrap(), &layout, id, &details, &selected, Some(&cover)).unwrap();
+    assert_eq!(saved.len(), 6, "{saved:?}");
+    let g = games::get_game(a.db.conn().unwrap(), &layout, id).unwrap();
+    assert_eq!((g.title.as_str(), g.genre.as_str()), ("Baldurs Gate 3", "RPG"));
+    assert_eq!((g.developer.as_str(), g.publisher.as_str(), g.release_year), ("Larian Studios", "Larian Studios", Some(2023)));
+    assert!(g.description.starts_with("Gather your party"));
+    assert_eq!(g.tags, ["Co-op", "Fantasy", "Story Rich"]);
+    let art = g.artwork_path.clone().expect("cover saved");
+    assert!(art.starts_with("Data/Artwork/Covers/") && layout.root.join(&art).is_file());
+    assert_eq!(walk(&dir), before, "the game's files are untouched");
+
+    // ticking the title later: the official title, and the search finds it
+    gog::apply(a.db.conn().unwrap(), &layout, id, &details, &["title".into(), "cover".into()], Some(&cover)).unwrap();
+    let g = games::get_game(a.db.conn().unwrap(), &layout, id).unwrap();
+    assert_eq!(g.title, "Baldur's Gate 3");
+    assert_eq!(g.artwork_path.as_deref(), Some(art.as_str()), "a game that has a cover keeps it");
+    let q = games::LibraryQuery { search: Some("baldur's".into()), ..Default::default() };
+    assert_eq!(games::list_games(a.db.conn().unwrap(), &q, "PC").unwrap().len(), 1);
+    assert!(gog::apply(a.db.conn().unwrap(), &layout, id, &details, &["folder".into()], None).is_err(), "unknown fields are refused");
+    // nothing left to offer for this product
+    let cur = gog::current(a.db.conn().unwrap(), id).unwrap();
+    assert!(gog::propose(&cur, &details).iter().all(|c| c.field == "genre"), "only the user's own genre differs");
+
+    // the older product API fills in when the newer one has no description; a busy GOG gives none
+    assert_eq!(client.description("1086940").unwrap().as_deref(), Some("The original saga."));
+    assert_eq!(client.description("7").unwrap(), None);
+    assert!(client.description("../x").is_err());
+
+    // only GOG addresses: a cover elsewhere is never fetched
+    let mut elsewhere = best.clone();
+    elsewhere.cover = Some("https://images.example.com/c.png".into());
+    assert!(matches!(client.cover(&elsewhere), Err(e) if matches!(e.kind, NetError::NotAllowed(_))));
+    let real = Client::new(Endpoints::gog());
+    let mut local = best.clone();
+    local.cover = Some(format!("{}/covers/bg3.png", mock.base));
+    assert!(matches!(real.cover(&local), Err(e) if matches!(e.kind, NetError::NotAllowed(_))), "plain HTTP only for the test server");
+
+    // what GOG was told: the title words, and who asks - no cookies
+    let seen = mock.seen.lock().unwrap().clone();
+    let first = &seen[0];
+    assert!(first.starts_with("/v1/catalog?") && first.contains("query=like%3Abaldurs+gate+3"), "{first}");
+    assert!(first.to_lowercase().contains("user-agent: gamecurator/"));
+    assert!(seen.iter().all(|r| !r.to_lowercase().contains("cookie")));
+
+    // no internet: a clear answer, nothing changes
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = closed.local_addr().unwrap().port();
+    drop(closed);
+    let offline = Client::new(Endpoints { catalog: format!("http://127.0.0.1:{port}"), api: format!("http://127.0.0.1:{port}"), allow_local_http: true });
+    let e = offline.search("Baldurs Gate 3").unwrap_err();
+    assert!(matches!(e.kind, NetError::Offline(_)) && e.to_string().contains("internet") && e.to_string().starts_with("GOG.com"), "{e}");
+
+    // which games are offered: those with something missing
+    let other = a.layout.games_dir().join("Gothic");
+    make_game_folder(&other, "gothic");
+    let gothic = add_game(&mut a, "Gothic", &other);
+    let conn = a.db.conn().unwrap();
+    assert_eq!(gog::games_missing_details(conn).unwrap(), vec![gothic], "Baldur's Gate 3 is complete now");
+    assert_eq!(gog::all_games(conn).unwrap(), vec![id, gothic]);
+}
+
+
+#[test]
+fn czech_and_english_descriptions_come_from_databaze_her_and_mobygames() {
+    use curator_core::lookup::{self, Details, NetError, Source};
+    use curator_core::{dbher, moby};
+    // Databáze-her.cz: a game page (shape of the real page, shortened); its address is made from the title
+    let page = r##"<script type="application/ld+json">{"@type":"VideoGame","name":"Baldur's Gate III","genre":["RPG"],
+        "author":[{"@type":"Organization","name":"Larian Studios"}]}</script>
+        <div class="game-title"><h1>Baldur's Gate III</h1><h4>Baldur's Gate 3</h4></div>
+        <div class="game-dates"><div><div class="game-date"><div class="platforms -inline"><a class="platform" data-system-name="pc">PC</a></div><div>03.08.2023</div></div></div></div>
+        <dl class="game-genres details"><dt>Žánr</dt><dd><div><a href="/hry/?zanr=p7p">RPG</a> &gt; <a href="/hry/?zanr=s30s">tahová RPG</a></div></dd></dl>
+        <div class="game-description article-text">Třetí díl legendární série.<br><br>Hraje se <i>po tazích</i>.</div>"##;
+    let dh = mock_gog(vec![
+        ("/hry/baldurs-gate-iii/", 200, "text/html; charset=utf-8", page.as_bytes().to_vec()),
+        ("/hry/system-shock-2/", 503, "text/plain", b"busy".to_vec()),
+    ]);
+    let dbc = dbher::Client::new(dbher::Endpoints { base: dh.base.clone(), allow_local_http: true });
+    let found = dbc.search("Baldurs Gate 3").unwrap();
+    assert_eq!(found.len(), 1);
+    let bg3 = found[0].clone();
+    assert_eq!((bg3.id.as_str(), bg3.title.as_str(), bg3.score), ("baldurs-gate-iii", "Baldur's Gate III", 100), "the other name counts");
+    assert_eq!((bg3.year, bg3.genres.clone(), bg3.developers.clone(), bg3.tags.clone()), (Some(2023), vec!["RPG".to_string()], vec!["Larian Studios".to_string()], vec!["tahová RPG".to_string()]));
+    assert_eq!(bg3.description.as_deref(), Some("Třetí díl legendární série.\n\nHraje se po tazích."));
+    {
+        let seen = dh.seen.lock().unwrap().clone();
+        let pages: Vec<&str> = seen.iter().map(|r| r.split('\n').next().unwrap()).collect();
+        assert_eq!(pages, ["/hry/baldurs-gate-3/", "/hry/baldurs-gate-iii/"], "public game pages only, never the search");
+        assert!(seen.iter().all(|r| r.to_lowercase().contains("user-agent: gamecurator/") && !r.to_lowercase().contains("cookie")));
+    }
+    assert!(dbc.search("Unknown Game Nobody Has").unwrap().is_empty(), "no page: nothing found");
+    assert_eq!(dbc.lookup(&format!("https://www.databaze-her.cz/hry/baldurs-gate-iii/"), "My BG3").unwrap()[0].id, "baldurs-gate-iii", "a pasted address is read directly");
+    let busy = dbc.search("System Shock 2").unwrap_err();
+    assert!(matches!(busy.kind, NetError::Bad(_)) && busy.to_string().starts_with("Databáze-her.cz"), "{busy}");
+
+    // MobyGames: the API with the user's key
+    let games = r#"{"games":[{"game_id":491,"title":"System Shock 2","moby_url":"https://www.mobygames.com/game/491/system-shock-2/",
+        "description":"<p>The year is 2114.</p>","genres":[{"genre_category":"Basic Genres","genre_name":"Action"},{"genre_category":"Perspective","genre_name":"1st-person"}],
+        "platforms":[{"first_release_date":"1999-08","platform_id":3,"platform_name":"Windows"}]}]}"#;
+    let release = r#"{"releases":[{"companies":[{"company_name":"Irrational Games","role":"Developed by"},{"company_name":"Electronic Arts","role":"Published by"}]}]}"#;
+    let mb = mock_gog(vec![
+        ("/v1/games?api_key=KEY-1&title=System Shock 2", 200, "application/json", games.as_bytes().to_vec()),
+        ("/v1/games/491/platforms/3?api_key=KEY-1", 200, "application/json", release.as_bytes().to_vec()),
+        ("/v1/games?api_key=WRONG", 401, "application/json", br#"{"error":"Unauthorized"}"#.to_vec()),
+        ("/v1/games?api_key=KEY-1&title=Too Many", 429, "application/json", b"{}".to_vec()),
+    ]);
+    let ep = moby::Endpoints { api: format!("{}/v1", mb.base), allow_local_http: true };
+    let mc = moby::Client::new(ep.clone(), " KEY-1 ").unwrap();
+    let mut found = mc.search("System Shock 2").unwrap();
+    assert!(lookup::confident(&found));
+    let ss2 = &mut found[0];
+    assert_eq!((ss2.id.as_str(), ss2.year, ss2.genres.clone(), ss2.tags.clone()), ("491", Some(1999), vec!["Action".to_string()], vec!["1st-person".to_string()]));
+    mc.companies(ss2).unwrap();
+    assert_eq!((ss2.developers.clone(), ss2.publishers.clone()), (vec!["Irrational Games".to_string()], vec!["Electronic Arts".to_string()]));
+    let wrong = moby::Client::new(ep.clone(), "WRONG").unwrap().search("System Shock 2").unwrap_err();
+    assert_eq!(wrong.kind, NetError::Unauthorized);
+    assert!(wrong.to_string().contains("API key") && !wrong.to_string().contains("WRONG"), "{wrong}");
+    let slow = mc.search("Too Many").unwrap_err();
+    assert!(slow.kind == NetError::RateLimited && slow.stops_all() && slow.to_string().contains("360"), "{slow}");
+    {
+        let seen = mb.seen.lock().unwrap().clone();
+        assert!(seen[0].starts_with("/v1/games?api_key=KEY-1&title=System+Shock+2&format=normal&limit=10"), "{}", seen[0]);
+        assert!(seen.iter().all(|r| !r.to_lowercase().contains("cookie")));
+    }
+    assert_eq!(moby::Client::new(ep, "").err().unwrap().kind, NetError::NoKey);
+
+    // the review and saving: the descriptions name their source; only empty fields are ticked
+    let fx = Fixture::new();
+    let mut a = fx.open("D");
+    let dir = a.layout.games_dir().join("Baldurs Gate 3");
+    make_game_folder(&dir, "baldurs_gate_3");
+    let id = add_game(&mut a, "Baldurs Gate 3", &dir);
+    a.db.conn().unwrap().execute("UPDATE games SET description = 'An English text I wrote.' WHERE id = ?1", [id]).unwrap();
+    let before = walk(&dir);
+    let cz = Details { source: Source::Dbher, description: bg3.description.clone(), product: bg3.clone(), has_cover: false };
+    let cur = lookup::current(a.db.conn().unwrap(), id).unwrap();
+    let changes = lookup::propose(&cur, &cz);
+    let desc = changes.iter().find(|c| c.field == "description").unwrap();
+    assert!(!desc.selected, "the user's own description stays unless ticked");
+    assert!(desc.proposed.ends_with("\u{2014} Zdroj: Databáze-her.cz, https://www.databaze-her.cz/hry/baldurs-gate-iii/ (licence CC BY-NC-ND 3.0 CZ)"), "{}", desc.proposed);
+    assert!(changes.iter().all(|c| c.field != "cover"), "no covers from Databáze-her.cz");
+    assert!(changes.iter().all(|c| c.field != "publisher"), "Databáze-her.cz names no publisher");
+    lookup::apply(a.db.conn().unwrap(), &a.layout, id, &cz, &["description".into(), "genre".into(), "year".into()], None).unwrap();
+    let (d, g, y): (String, String, i64) =
+        a.db.conn().unwrap().query_row("SELECT description, genre, release_year FROM games WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+    assert!(d.starts_with("Třetí díl legendární série.") && d.contains("CC BY-NC-ND 3.0 CZ"), "{d}");
+    assert_eq!((g.as_str(), y), ("RPG", 2023));
+    let cur = lookup::current(a.db.conn().unwrap(), id).unwrap();
+    assert!(lookup::propose(&cur, &cz).iter().all(|c| c.field != "description"), "the same text is not offered again");
+    assert_eq!(walk(&dir), before, "the game folder is untouched");
+}
+
+fn walk(dir: &std::path::Path) -> Vec<(String, u64)> {
+    let mut out = Vec::new();
+    for e in fs::read_dir(dir).unwrap() {
+        let e = e.unwrap();
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(walk(&p));
+        } else {
+            out.push((p.to_string_lossy().into_owned(), p.metadata().unwrap().len()));
+        }
+    }
+    out.sort();
+    out
 }

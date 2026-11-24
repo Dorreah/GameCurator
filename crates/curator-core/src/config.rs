@@ -43,6 +43,14 @@ pub struct AppConfig {
     /// Open PDF manuals in Game Curator's viewer and music in its player
     /// (otherwise in the default Windows application).
     pub builtin_viewer: bool,
+    /// Interface language: "en" (English, default) | "cs" (Czech).
+    pub language: String,
+    /// The user's own MobyGames API key (game details from MobyGames);
+    /// empty = not set. Sent only to api.mobygames.com.
+    pub mobygames_key: String,
+    /// The source the Archive Scanner fetches game details from
+    /// ("gog" | "dbher" | "moby").
+    pub details_source: String,
 }
 
 /// Default left column of the game profile, in percent (the archive gets
@@ -74,6 +82,9 @@ impl Default for AppConfig {
             classic_font: "pixel-operator".into(),
             journal_prompt: true,
             builtin_viewer: true,
+            language: "en".into(),
+            mobygames_key: String::new(),
+            details_source: "gog".into(),
         }
     }
 }
@@ -92,6 +103,12 @@ impl AppConfig {
         check(&self.card_size, &["small", "medium", "large"], "card size")?;
         check(&self.sort, SORTS, "sort order")?;
         check(&self.classic_font, CLASSIC_FONTS, "font")?;
+        check(&self.language, LANGUAGES, "language")?;
+        check(&self.details_source, DETAILS_SOURCES, "source")?;
+        self.mobygames_key = self.mobygames_key.trim().to_string();
+        if !crate::moby::valid_key(&self.mobygames_key) {
+            return Err(CoreError::invalid("The MobyGames API key may contain only letters, digits and punctuation (no spaces)."));
+        }
         self.scan_depth = self.scan_depth.clamp(1, 6);
         self.auto_backup_keep = self.auto_backup_keep.clamp(1, 100);
         self.profile_split = clamp_split(self.profile_split);
@@ -118,6 +135,15 @@ impl AppConfig {
         if !CLASSIC_FONTS.contains(&self.classic_font.as_str()) {
             self.classic_font = d.classic_font;
         }
+        if !LANGUAGES.contains(&self.language.as_str()) {
+            self.language = d.language;
+        }
+        if !DETAILS_SOURCES.contains(&self.details_source.as_str()) {
+            self.details_source = d.details_source;
+        }
+        if !crate::moby::valid_key(self.mobygames_key.trim()) {
+            self.mobygames_key = d.mobygames_key;
+        }
         self.scan_depth = self.scan_depth.clamp(1, 6);
         self.auto_backup_keep = self.auto_backup_keep.clamp(1, 100);
         self.profile_split = clamp_split(self.profile_split);
@@ -128,6 +154,10 @@ impl AppConfig {
 const THEMES: &[&str] = &["classic", "amber", "matrix", "dos"];
 const SORTS: &[&str] = &["title", "year", "added", "size"];
 const CLASSIC_FONTS: &[&str] = &["pixel-operator", "dogica", "geist-pixel", "roboto-slab"];
+/// Interface languages (the translations themselves live in the UI).
+pub const LANGUAGES: &[&str] = &["en", "cs"];
+/// Sources of game details (`lookup::Source`).
+pub const DETAILS_SOURCES: &[&str] = &["gog", "dbher", "moby"];
 
 /// Loads the configuration. A missing file yields defaults; a damaged file
 /// is kept as `config.json.bad` and defaults are used.

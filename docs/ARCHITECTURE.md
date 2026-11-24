@@ -1,4 +1,4 @@
-# Game Curator 0.1 – architektura a struktura projektu
+# Game Curator 0.2 – architektura a struktura projektu
 
 Cílová platforma: **jen Windows 10/11 x64** s WebView2. Kód pro jiné systémy
 neexistuje; jádro je čistý Rust (testovatelný kdekoli) a linuxový build
@@ -29,6 +29,7 @@ aplikace slouží výhradně jako testovací harness (`--features e2e`).
 │                Data/Thumbnails                                   │
 │   viewer.rs    okna čtečky PDF a přehrávače, tokeny souborů,     │
 │                čtení po částech (media_read)                     │
+│   details.rs   údaje o hrách (GOG/DH/Moby): vlákno, revize, uložení│
 │   state.rs     sdílený stav (Mutex<Database>, config, sken)      │
 │   lib.rs       start: archiv → WebView2 → DB → úklid → okno      │
 └──────────────────────────────┬────────────────────────────────┘
@@ -47,6 +48,12 @@ aplikace slouží výhradně jako testovací harness (`--features e2e`).
 │   additions.rs   dodatečné soubory: kopie do archivu / odkaz     │
 │   media.rs    PDF/hudba: typy, playlist hry, čtení po částech     │
 │   scanner.rs  hledání kandidátů, zrušení, import bez duplicit    │
+│   lookup.rs   společné pro údaje o hrách: povolené adresy zdroje,│
+│               Fetcher (HTTPS, pauzy), párování názvů, HTML → text,│
+│               návrh změn, uložení vybraného, uvedení zdroje      │
+│   gog.rs      GOG.com: katalog + produktová API                  │
+│   dbher.rs    Databáze-her.cz: adresa stránky z názvu, čtení HTML │
+│   moby.rs     MobyGames API (klíč uživatele, max. 1 dotaz/s)     │
 │   images.rs   JPG/PNG/WebP → WebP obal + náhled 360×480 z výřezu │
 │   backup.rs   VACUUM INTO zálohy, ověření, rotace, obnova        │
 │   config.rs   Data/config.json                                   │
@@ -63,9 +70,19 @@ dělá Rust, který každou cestu ověří.
 * **Jediné menu je levý sloupec**: logo (otevřená krabice), pod ním Library,
   Gaming Journal, Archive Scanner, Settings a dole About. Ikony jsou inline
   SVG s `stroke: currentColor`, takže je přebarví každý vzhled. Alt+1–5.
-* **Library** má jen hledání podle názvu a řazení (`LibraryQuery { search,
-  sort }`). Filtry nejsou ani v UI, ani v jádře; staré klíče v JSON se
-  ignorují. Stavový řádek ukazuje „N games · M offline“ (`facets.js`).
+* **Library** má hledání podle názvu, řazení a **filtr podle žánru
+  a štítků** (`LibraryQuery { search, sort, genres, tags }`; tlačítko
+  s trychtýřem vedle Sort). Pole žánru obsahuje víc žánrů oddělených
+  čárkou (`games::split_genres`); filtr i nabídka (`library_facets`) je
+  berou jednotlivě, bez ohledu na velikost písmen, diakritiku a mezery.
+  V rámci žánrů i štítků stačí jeden zaškrtnutý („nebo“), mezi žánry
+  a štítky musí platit obojí („a“). Výběr se drží po dobu běhu aplikace
+  (`state.query`), aktivní filtry ukazuje lišta nad hrami (× odebere jeden,
+  „Clear filters“ všechny); hodnoty, které už žádná hra nemá, se zahodí.
+  Filtry podle stavu hraní nejsou; staré klíče ze 0.1 se ignorují.
+  Stavový řádek ukazuje „N games · M offline“ (`facets.js`). Pole Genre
+  ve formuláři nenabízí hodnoty z jiných her (žádný `datalist`,
+  `autocomplete="off"`).
 * **Zápisky** vznikají jen v profilu hry. Stránka Gaming Journal načte
   všechny zápisky (`list_journal`, nejnovější první) a seskupí je po hrách;
   pořadí skupin určuje nejnovější zápisek. `navigate('journal', { gameId })`
@@ -78,6 +95,46 @@ dělá Rust, který každou cestu ověří.
   sloupce si drží minimální šířku (320 / 380 px). Pod 1180 px se panely
   skládají pod sebe a čára zmizí.
 * **About** je statický text s hlavní myšlenkou + údaje z `app_info`.
+
+## Jazyk rozhraní (angličtina / čeština)
+
+* **Nastavení → Language / Jazyk** (a přepínač „English | Čeština“ přímo
+  v uvítacím okně a v průvodci). Volba se ukládá do `config.json`
+  (`language`: `"en"` výchozí | `"cs"`; neznámá hodnota → `"en"`).
+* **Překládá UI**, Rust píše anglicky. `ui/js/i18n.js`: anglický text ve
+  zdrojáku je klíč, `t('…', { params })` vrátí překlad z `ui/js/lang/cs.js`
+  (chybějící klíč = angličtina, nic se nerozbije). `tn(n, one, other)` řeší
+  české tři tvary množného čísla (1 / 2–4 / 0 a 5+); klíčem je anglický
+  tvar „other“ a hodnotou pole `[one, few, many]`. `mark('…')` označí texty
+  v tabulkách (kategorie souborů, druhy dodatečných souborů, popisy vzhledů),
+  které se přeloží až při zobrazení.
+* **Zprávy z Rustu** (chyby, poznámky při startu, typ disku) překládá `tm()`
+  v jediném místě – `api.js call()` – podle `CS_MESSAGES`: přesná shoda nebo
+  vzor s `{0}`, `{1}` (cesty, čísla, názvy zůstanou, vnořená zpráva se
+  přeloží znovu). Počty ve zprávách z Rustu jsou psané s dvojtečkou („Odstraněné
+  nepoužívané soubory obalů: 3.“), takže nepotřebují tvary množného čísla.
+* **Statické HTML** (levý sloupec, stavový řádek, okna PDF, přehrávače
+  a nabídky zápisu) nese `data-i18n`, `data-i18n-title`, `data-i18n-aria`,
+  `data-i18n-doc`; `applyStatic()` je přeloží při načtení i při přepnutí.
+* **Přepnutí bez restartu**: `store.changeLanguage()` uloží volbu, pošle
+  událost `gc-lang` (app.js přejmenuje levý sloupec a stavový řádek)
+  a znovu vykreslí aktuální stránku. Ostatní okna (PDF, hudba, nabídka
+  zápisu) čtou jazyk synchronně z `localStorage` (`gc-lang`, mezipaměť
+  config.json – stejně jako vzhled) a přepnou se přes událost `storage`.
+  Rozpracované texty (stav načítání, zpráva přehrávače) se drží jako funkce,
+  takže se přeloží i dodatečně.
+* **Rust** (`src-tauri/src/lang.rs`) přeloží jen to, co kreslí Windows: titulky
+  souborových dialogů, titulky oken („Hudba“, „Zpátky ze hry“) a chybová okna
+  při startu (WebView2 chybí, archiv nejde otevřít – jazyk se čte z
+  `Data/config.json` ještě před otevřením archivu).
+* **Co zůstává anglicky**: názvy (Game Curator, GOG.com, názvy vzhledů a písem),
+  herní výrazy, které čeští hráči používají (Patch, Fix, Mod, DLC, screenshot,
+  soundtrack), razítko OFFLINE. Data uživatele (názvy, popisy, poznámky,
+  žánry, tagy) se nepřekládají nikdy. Oslovení je tykání.
+* **Kontrola úplnosti**: `tools/check_i18n.py` posbírá všechny klíče
+  (`t`, `tn`, `mark`, `data-i18n*`) i uživatelské zprávy z Rustu a ověří, že
+  mají český překlad se stejnými zástupnými symboly a tři tvary u množného
+  čísla. Spouští ho i E2E test.
 
 ## Výřez obalu
 
@@ -276,17 +333,20 @@ game-curator/
 │   ├── icons/                 ikony (generuje tools/make_icons.py)
 │   └── src/                   lib.rs, commands.rs, system.rs, protocol.rs, state.rs,
 │                              dragdrop.rs, session.rs (konec hry spuštěné přes Play),
-│                              viewer.rs (okna čtečky PDF a přehrávače)
-├── ui/                        index.html, viewer.html, player.html,
+│                              viewer.rs (okna čtečky PDF a přehrávače), offer.rs (nabídka
+│                              zápisu po hraní), details.rs (údaje o hrách z internetu), lang.rs (jazyk
+│                              dialogů a titulků oken Windows)
+├── ui/                        index.html, viewer.html, player.html, offer.html,
 │                              css/retro.css + classic.css + themes.css + media.css,
-│                              js/*.js, img/, vendor/pdfjs/ (pdf.js – Apache 2.0), fonts/ (Pixel Operator – CC0, PxPlus IBM
+│                              js/*.js (i18n.js = jazyk rozhraní), js/lang/cs.js (čeština), img/, vendor/pdfjs/ (pdf.js – Apache 2.0), fonts/ (Pixel Operator – CC0, PxPlus IBM
 │                              VGA8 – CC BY-SA 4.0, Dogica – OFL, Geist Pixel – OFL,
 │                              Roboto Slab – Apache 2.0, GC VGA / Pixel Symbols – CC0)
 ├── portable/README.txt        návod, který se přikládá k GameCurator.exe
 ├── tests/e2e/run_e2e.py       end-to-end testy přes WebDriver (tauri-driver)
 ├── tools/                     build-windows.sh, package.sh, make_icons.py, make_matrix_rain.py,
 │                              make_fonts.py + fonts-src/ (originální TTF a licence písma),
-│                              vendor_pdfjs.sh (kopie pdf.js do ui/vendor/pdfjs)
+│                              vendor_pdfjs.sh (kopie pdf.js do ui/vendor/pdfjs),
+│                              check_i18n.py (úplnost českého překladu)
 └── docs/                      tato dokumentace
 ```
 
@@ -316,7 +376,8 @@ game-curator/
   `--disable-component-update`, `--disable-domain-reliability`,
   `--disable-sync`, `--no-pings`, malou diskovou cache a bez cache shaderů.
   Aplikace je offline a stránky jsou uvnitř exe, takže to šetří paměť, CPU
-  i zápisy na USB disk.
+  i zápisy na USB disk. (Jediná výjimka je hledání údajů o hrách na pokyn
+  uživatele – viz „Údaje o hrách z internetu“; to dělá Rust, ne WebView2.)
 
 ## Vzhledy (Classic, Terminal CRT Amber, Matrix Terminal, DOS Midnight)
 
@@ -458,6 +519,114 @@ importovat), stejný název = „Possible duplicate“ (varování). Běží
 v samostatném vlákně, průběh přes událost `scan-progress` (max. 10×/s),
 zrušení přes `AtomicBool` kontrolovaný u každé složky. Skener jen čte.
 
+**Nápověda k hledání složek** (`scanner.js helpHtml()`): stručný průvodce na
+stránce skeneru – jakou složku vybrat (hlavní složku sbírky, ne jednu hru),
+jedna hra = jedna složka s ukázkovým stromem, jak se hra pozná (pravidla 1–3
+výše a zdroje názvu), co znamená hloubka hledání a stavy po skenování.
+Je otevřená, dokud nejsou výsledky; po skenování ustoupí (výsledky se
+odrolují do zobrazení), ručně otevřená nebo zavřená zůstane, jak ji
+uživatel nechal (`localStorage` `gc-scan-help`). Pod výběrem hloubky je
+ukázková cesta, kam až skener dosáhne (`Hry\…\…\Hra`). Formulář hry má
+u „Složka hry“ tlačítko **?** se stejným vysvětlením pro jednu hru, průvodce
+prvního spuštění krátké „Jakou složku vybrat“ a Nastavení popisek u složky
+ke skenování.
+
+## Údaje o hrách z internetu
+
+Jediná část aplikace, která jde na internet – a jen když uživatel stiskne
+**Fetch details from …** nebo **Search again** (sekce „Game details from the
+internet“ na stránce Archive Scanner). Uživatel volí zdroj (`config.detailsSource`:
+`gog` / `dbher` / `moby`); všechny tři sdílejí `curator_core::lookup`:
+
+* **Povolené adresy podle zdroje** (`lookup::allowed_url(source, …)`): jen
+  `https`, výchozí port, bez jména a hesla, a jen hostitelé daného zdroje –
+  GOG: `gog.com`, `*.gog.com`, `*.gog-statics.com`; Databáze-her.cz:
+  `databaze-her.cz`, `www.databaze-her.cz`; MobyGames: `api.mobygames.com`.
+  Kontroluje se každá adresa i po přesměrování. Zdroj tak nemůže poslat dotaz
+  jinam (ani obal z cizí adresy).
+* **Fetcher:** `ureq` + rustls s přibalenými kořenovými certifikáty Mozilla,
+  User-Agent `GameCurator/<verze>`, žádné cookies ani účet, časové limity 10 s
+  spojení / 30 s celkem, odpověď max. 8 MB (obrázek 15 MB). Pauza mezi dotazy
+  podle zdroje: GOG 150 ms, Databáze-her.cz 1 s, MobyGames 1,1 s (API povoluje
+  1 dotaz za sekundu a 360 za hodinu). Chyby `LookupError {source, kind}` mají
+  srozumitelné hlášky; výpadek sítě, „zpomal“ (429), odmítnutý klíč nebo chybějící
+  klíč zastaví celý běh. Klíč se v chybových hláškách nikdy neukáže (`redact`).
+* **Uvedení zdroje:** popis z Databáze-her.cz dostane na konec řádek
+  „— Zdroj: Databáze-her.cz, <adresa stránky> (licence CC BY-NC-ND 3.0 CZ)“
+  (licence to vyžaduje), popis z MobyGames „— Source: MobyGames, <adresa>“.
+  Popis se nijak neupravuje kromě převodu HTML na text.
+
+### GOG.com
+
+* **Odkud:** veřejný katalog obchodu GOG
+  (`catalog.gog.com/v1/catalog?query=like:<slova názvu>&productType=in:game,pack&locale=en-US`)
+  dává název, vývojáře, vydavatele, žánry, tagy, datum vydání a adresu
+  svislého obalu. Popis z `api.gog.com/v2/games/<id>` (pole `description`),
+  když chybí, ze staršího `api.gog.com/products/<id>?expand=description`
+  (`full`, jinak `lead`; ten má limit ~200 dotazů/h, při „429“ se popis
+  prostě vynechá). Obal z `images.gog-statics.com`. Jde o neoficiální,
+  nedokumentovaná rozhraní, která používá samotný obchod GOG.
+* **Kam smí:** klient (`curator_core::gog::Client`, `ureq` + rustls
+  s přibalenými kořenovými certifikáty Mozilla, takže nezávisí na nastavení
+  PC) kontroluje každou adresu i po přesměrování: jen `https`, výchozí port,
+  hostitel `gog.com` / `*.gog.com` / `*.gog-statics.com`, bez jména a hesla.
+  Posílá se jen hledaný název, User-Agent `GameCurator/<verze>`, žádné
+  cookies ani účet. Mezi dotazy 150 ms pauza, časové limity 10 s spojení /
+  30 s celkem, odpověď max. 8 MB (obrázek 15 MB). Stránky aplikace samy na
+  internet nesmí (CSP), všechno dělá Rust.
+* **Párování:** název se normalizuje (malá písmena, bez diakritiky, bez ™®©,
+  „&“ = „and“, „Baldur's“ = „Baldurs“). Shoda 100 = stejný název, 92 = stejný
+  bez „The“ a slov edice (Enhanced/Definitive/GOTY/Complete/Director's Cut…),
+  pak podle společných slov. **Found** = nejlepší výsledek ≥ 90 a žádný jiný
+  produkt stejného druhu se stejným skóre; jinak **Check the match** (nejlepší
+  výsledek od 40 předvybraný, ale hra není zaškrtnutá) nebo **Not found**.
+  Když první hledání nic jistého nenajde, zkusí se název bez „The“ a edice.
+  „Search again“ hledá slovy uživatele; skóre je pak nejlepší z názvu hry
+  i hledaných slov. Výběr jiného nalezeného produktu načte jeho údaje.
+* **Revize a uložení:** pro každou hru se ukáže, co by se změnilo (stejné
+  hodnoty se vynechají). **Prázdná pole jsou zaškrtnutá, vyplněná ne** –
+  nic, co uživatel napsal, se nepřepíše bez zaškrtnutí. Žánry se spojí čárkou
+  (max. 100 znaků), tagy se jen přidávají (bez opakování žánrů, max. 10 nových,
+  celkem nejvýš 30), rok jen z data vydání 1940–2100, popis z HTML na čistý
+  text (odstavce, odrážky, entity; max. 20 000 znaků). Obal jen hře, která
+  žádný nemá (náhled v revizi jako `data:` PNG, uloží se jako WebP stejnou
+  cestou jako ručně vybraný). `details_apply` dostane od stránky jen id hry,
+  id produktu a názvy polí; hodnoty bere z údajů, které drží Rust.
+* **Rozsah:** hry s chybějícími údaji (popis, žánr, vývojář, vydavatel, rok,
+  tagy nebo obal), všechny hry, nebo po importu ve skeneru právě
+  importované hry. Běží ve vlákně (`details-progress`, `details-finished`), lze
+  zrušit; když zdroj není dostupný, skončí srozumitelnou hláškou a nic se
+  nemění. Soubory her se nikdy nečtou ani neupravují.
+
+### Databáze-her.cz (české popisy)
+
+* **Bez vyhledávání:** vyhledávání webu (`/hledani/`) zakazuje `robots.txt`,
+  takže se nepoužívá. Adresa stránky hry se odvodí z názvu stejně jako na webu
+  (`/hry/<název>/`: malá písmena, bez diakritiky, „&“ = „and“, apostrofy
+  a tečky pryč, ostatní znaky „-“) a zkusí se i varianta s římskými číslicemi
+  („Baldurs Gate 3“ → `baldurs-gate-3`, `baldurs-gate-iii`); nejvýš 5 adres
+  na hru. Do „Search again“ lze vložit adresu stránky hry (nebo jen její část
+  za `/hry/`) – přečte se přímo. Tlačítko **Search on Databáze-her.cz ↗**
+  otevře hledání webu v prohlížeči uživatele (`open_url`, jen `https`).
+* **Co se čte ze stránky:** JSON-LD `VideoGame` (název, žánry, vývojáři),
+  `div.game-title` (h1 a další názvy v h4, počítají se i pro shodu),
+  `div.game-dates` (datum `dd.mm.rrrr`, přednostně PC), `dl.game-genres`
+  (podžánry → tagy, „nezařazeno“ se vynechá), `div.game-description` (popis),
+  „Rozsah“ (datadisk/DLC = druh produktu). Vydavatele ani obal stránka
+  nedává, takže je zdroj nenabízí.
+
+### MobyGames (anglické popisy)
+
+* **API s klíčem uživatele:** `https://api.mobygames.com/v1`, klíč
+  (`config.mobygamesKey`, Data/config.json) jde v parametru `api_key`.
+  Bez klíče se nic neposílá. Hledání `/games?title=…&format=normal&limit=10`,
+  vývojář a vydavatel z vydání pro PC (`/games/<id>/platforms/<platforma>`,
+  přednost Windows 3, DOS 2, Linux 5…). Do „Search again“ lze vložit adresu
+  hry na mobygames.com (`/game/<id>/…`) nebo její číslo.
+* **Žánry:** kategorie „Basic Genres“ → žánr, ostatní (perspektiva, téma,
+  styl…) → tagy, bez obchodního modelu, ovládání, add-onů a podobně. Obal se
+  nebere.
+
 ## Bezpečnost
 
 * Open/Run dostávají jen `game_id` + `file_id`; cesta se vezme z DB, ověří
@@ -475,3 +644,8 @@ zrušení přes `AtomicBool` kontrolovaný u každé složky. Skener jen čte.
   u, blockquote) bez atributů; sanitizuje se při uložení i zobrazení. CSP
   zakazuje inline skripty.
 * Kód nikdy nemaže, nepřesouvá ani neupravuje nic mimo vlastní `Data/`.
+* Na internet jde jen hledání údajů o hrách, a jen po stisku tlačítka:
+  HTTPS jen na adresy zvoleného zdroje (GOG.com, Databáze-her.cz nebo
+  api.mobygames.com), kontrola každé adresy i po přesměrování (viz výše).
+  Odkazy „Page ↗“ / „Search on … ↗“ otevírá prohlížeč uživatele; Rust je
+  předtím ověří proti adresám zdroje.

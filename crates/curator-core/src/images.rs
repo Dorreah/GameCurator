@@ -208,10 +208,32 @@ pub fn decode(source: &Path) -> Result<DynamicImage> {
 /// Converts the chosen image into cover + thumbnail WebP files inside the
 /// archive and returns their stored (archive-relative) paths.
 pub fn process_artwork(layout: &ArchiveLayout, source: &Path) -> Result<ProcessedArtwork> {
-    let img = decode(source)?;
+    store_artwork(layout, &decode(source)?)
+}
+
+/// The same for an image received as bytes (a cover from GOG.com): only
+/// JPG, PNG and WebP, with the same size limits as a chosen file.
+pub fn process_artwork_bytes(layout: &ArchiveLayout, bytes: &[u8]) -> Result<ProcessedArtwork> {
+    if bytes.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(CoreError::invalid("The image is too large (maximum 50 MB)."));
+    }
+    let mut reader = ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
+    if !matches!(reader.format(), Some(image::ImageFormat::Jpeg | image::ImageFormat::Png | image::ImageFormat::WebP)) {
+        return Err(CoreError::invalid("Unsupported image format. Please use JPG, PNG or WebP."));
+    }
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(16_000);
+    limits.max_image_height = Some(16_000);
+    limits.max_alloc = Some(512 * 1024 * 1024);
+    reader.limits(limits);
+    let img = reader.decode().map_err(|e| CoreError::Image(e.to_string()))?;
+    store_artwork(layout, &img)
+}
+
+fn store_artwork(layout: &ArchiveLayout, img: &DynamicImage) -> Result<ProcessedArtwork> {
     let name = new_name();
 
-    let cover = fit(&img, COVER_MAX);
+    let cover = fit(img, COVER_MAX);
     let thumb = DynamicImage::ImageRgba8(render_thumbnail(&cover, &Crop::centred(cover.width(), cover.height())));
     let cover_bytes = encode_webp(&cover, 88.0)?;
     let thumb_bytes = encode_webp(&thumb, 80.0)?;
