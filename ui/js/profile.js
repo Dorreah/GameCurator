@@ -3,8 +3,9 @@
 
 import { api, imgSrc } from './api.js';
 import {
-  esc, initials, formatBytes, formatDate, guard, toast, confirmBox, openModal, installBox, CATEGORY_LABELS, CATEGORY_GROUPS,
+  esc, initials, formatBytes, formatDate, guard, toast, confirmBox, openModal, installBox, CATEGORY_LABELS, CATEGORY_GROUPS, categoryLabel,
 } from './ui.js';
+import { t, tn } from './i18n.js';
 import { createCropper } from './cropper.js';
 import { shotsPanelHtml, openGallery, addShots, SHOT_DROP_HINT } from './gallery.js';
 import { additionsPanelHtml, bindAdditions, addFiles, ADDITIONS_DROP_HINT } from './additions.js';
@@ -34,22 +35,22 @@ function renderInfo() {
   const g = game;
   const cover = g.thumbnailPath
     ? `<img src="${esc(imgSrc(g.thumbnailPath))}" alt="">
-       <button class="btn small adjust-art" id="pf-adjust" title="Choose the part of the artwork shown on the card">Adjust</button>`
+       <button class="btn small adjust-art" id="pf-adjust" title="${t('Choose the part of the artwork shown on the card')}">${t('Adjust')}</button>`
     : `<div class="cover" style="position:absolute;inset:0"><div class="ph">${esc(initials(g.title))}<span></span></div></div>`;
   const facts = [
-    ['Developer', esc(g.developer)],
-    ['Publisher', esc(g.publisher)],
-    ['Released', g.releaseYear ?? ''],
-    ['Genre', esc(g.genre)],
-    ['Tags', g.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')],
+    [t('Developer'), esc(g.developer)],
+    [t('Publisher'), esc(g.publisher)],
+    [t('Released'), g.releaseYear ?? ''],
+    [t('Genre'), esc(g.genre)],
+    [t('Tags'), g.tags.map((tag) => `<span class="chip">${esc(tag)}</span>`).join('')],
   ].filter(([, v]) => v !== '' && v != null);
   return `
     <div class="game-info">
       <div class="cover-big">${cover}</div>
       <div>
         <dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}
-          <dt>In archive</dt><dd>since ${formatDate(g.dateAdded)}</dd></dl>
-        ${facts.length < 3 ? '<p class="hint" style="margin:10px 0 0">Developer, year, genre or tags can be added with “Edit”.</p>' : ''}
+          <dt>${t('In archive')}</dt><dd>${t('since {date}', { date: formatDate(g.dateAdded) })}</dd></dl>
+        ${facts.length < 3 ? `<p class="hint" style="margin:10px 0 0">${t('Developer, year, genre or tags can be added with “Edit”.')}</p>` : ''}
       </div>
     </div>
     <div class="install-row" id="pf-install">${renderInstall()}</div>
@@ -59,48 +60,48 @@ function renderInfo() {
 /** Installed on this PC? Where? */
 function renderInstall() {
   const i = install;
-  const SOURCE = { gog: 'found in the GOG installation records', uninstall: 'found in the Windows list of programs', manual: 'set by you' };
+  const SOURCE = { gog: t('found in the GOG installation records'), uninstall: t('found in the Windows list of programs'), manual: t('set by you') };
   if (!i) {
-    return `${installBox(false)}<div class="inst-text"><b>Not installed on this PC</b>
-        <div class="hint">If it is installed but was not found, point to its program.</div></div>
-      <div class="inst-actions"><button class="btn small" id="pf-inst-locate">Locate…</button></div>`;
+    return `${installBox(false)}<div class="inst-text"><b>${t('Not installed on this PC')}</b>
+        <div class="hint">${t('If it is installed but was not found, point to its program.')}</div></div>
+      <div class="inst-actions"><button class="btn small" id="pf-inst-locate">${t('Locate…')}</button></div>`;
   }
   // the path is not printed (less text on screen): "Show location" opens it,
   // and the tooltip tells where it is and how it was found
-  const where = [i.installDir, i.exe ? `Program: ${i.exe}` : '', SOURCE[i.source] || i.source].filter(Boolean).join('\n');
+  const where = [i.installDir, i.exe ? t('Program: {exe}', { exe: i.exe }) : '', SOURCE[i.source] || i.source].filter(Boolean).join('\n');
   let note = '';
-  if (!i.found) note = '<div class="warn-text">The installation folder was not found.</div>';
-  else if (!i.canPlay) note = '<div class="warn-text">The game\'s program is not known – use Locate…</div>';
-  return `${installBox(i.found)}<div class="inst-text" title="${esc(where)}"><b>Installed on this PC</b>${note}</div>
+  if (!i.found) note = `<div class="warn-text">${t('The installation folder was not found.')}</div>`;
+  else if (!i.canPlay) note = `<div class="warn-text">${t("The game's program is not known – use Locate…")}</div>`;
+  return `${installBox(i.found)}<div class="inst-text" title="${esc(where)}"><b>${t('Installed on this PC')}</b>${note}</div>
       ${!i.canPlay ? '' : state.running.has(game.id)
-    ? '<button class="btn gold inst-play" id="pf-play" disabled title="The game is running. When it ends, Game Curator offers a journal entry.">● Running</button>'
-    : '<button class="btn gold inst-play" id="pf-play" title="Start the installed game (asks first)">▶ Play</button>'}
+    ? `<button class="btn gold inst-play" id="pf-play" disabled title="${t('The game is running. When it ends, Game Curator offers a journal entry.')}">● ${t('Running')}</button>`
+    : `<button class="btn gold inst-play" id="pf-play" title="${t('Start the installed game (asks first)')}">▶ ${t('Play')}</button>`}
       <div class="inst-actions">
-        ${i.found ? `<button class="btn small" id="pf-inst-folder" title="Open the installation folder in Explorer:\n${esc(i.installDir)}">Show location</button>` : ''}
-        <button class="btn small" id="pf-inst-locate" title="Choose the game's program yourself">${i.found && i.canPlay ? 'Change…' : 'Locate…'}</button>
-        ${i.source === 'manual' || !i.found ? '<button class="btn small" id="pf-inst-forget" title="Forget this location (nothing on disk is touched)">Forget</button>' : ''}
+        ${i.found ? `<button class="btn small" id="pf-inst-folder" title="${esc(t('Open the installation folder in Explorer:'))}\n${esc(i.installDir)}">${t('Show location')}</button>` : ''}
+        <button class="btn small" id="pf-inst-locate" title="${esc(t("Choose the game's program yourself"))}">${i.found && i.canPlay ? t('Change…') : t('Locate…')}</button>
+        ${i.source === 'manual' || !i.found ? `<button class="btn small" id="pf-inst-forget" title="${t('Forget this location (nothing on disk is touched)')}">${t('Forget')}</button>` : ''}
       </div>`;
 }
 
 async function playFlow() {
   const ok = await confirmBox({
-    title: 'Start game?',
-    html: `<b>${esc(game.title)}</b> will be started:\n<span class="mono">${esc(install.exe)}</span>\n\nGame Curator never starts anything on its own.`,
-    ok: '▶ Play',
-    cancel: 'Cancel',
+    title: t('Start game?'),
+    html: t('<b>{title}</b> will be started:\n<span class="mono">{exe}</span>\n\nGame Curator never starts anything on its own.', { title: esc(game.title), exe: esc(install.exe) }),
+    ok: `▶ ${t('Play')}`,
+    cancel: t('Cancel'),
   });
   if (!ok) return;
   await api.playGame(game.id);
-  toast(`Started ${game.title}.`);
+  toast(t('Started {name}.', { name: game.title }));
 }
 
 /** The part of the artwork shown on the card, chosen in a small window. */
 async function adjustArtworkFlow() {
   const m = openModal({
-    title: `Artwork – ${game.title}`,
+    title: t('Artwork – {title}', { title: game.title }),
     width: 380,
-    body: '<div id="adj-host" style="display:flex;justify-content:center"></div><p class="hint" style="margin:10px 0 0;text-align:center">Drag to choose what the card shows. Zoom with the wheel or the slider; “Fit” shows the whole picture.</p>',
-    footer: '<button class="btn" data-close>Cancel</button><button class="btn gold" id="adj-save">Save</button>',
+    body: `<div id="adj-host" style="display:flex;justify-content:center"></div><p class="hint" style="margin:10px 0 0;text-align:center">${t('Drag to choose what the card shows. Zoom with the wheel or the slider; “Fit” shows the whole picture.')}</p>`,
+    footer: `<button class="btn" data-close>${t('Cancel')}</button><button class="btn gold" id="adj-save">${t('Save')}</button>`,
   });
   const cropper = createCropper(m.el.querySelector('#adj-host'), { src: imgSrc(game.artworkPath), crop: game.coverCrop, width: 270 });
   m.el.querySelector('#adj-save').addEventListener('click', () => m.close(cropper.getCrop()));
@@ -109,7 +110,7 @@ async function adjustArtworkFlow() {
   await api.setCoverCrop(game.id, crop);
   await reloadGame();
   render();
-  toast('Artwork adjusted.');
+  toast(t('Artwork adjusted.'));
 }
 
 // ---------------------------------------------------------------- divider
@@ -177,30 +178,30 @@ function bindSplit() {
 // ---------------------------------------------------------------- archive
 
 function categoryOptions(f) {
-  const auto = `<option value="auto" ${f.customCategory ? '' : 'selected'}>${CATEGORY_LABELS[f.fileType] || f.fileType} (auto)</option>`;
-  return auto + Object.entries(CATEGORY_LABELS)
-    .map(([k, v]) => `<option value="${k}" ${f.customCategory === k ? 'selected' : ''}>${v}</option>`).join('');
+  const auto = `<option value="auto" ${f.customCategory ? '' : 'selected'}>${t('{category} (auto)', { category: categoryLabel(f.fileType) })}</option>`;
+  return auto + Object.keys(CATEGORY_LABELS)
+    .map((k) => `<option value="${k}" ${f.customCategory === k ? 'selected' : ''}>${categoryLabel(k)}</option>`).join('');
 }
 
 function fileActions(f) {
-  if (f.isMissing) return '<span class="badge missing">missing</span>';
-  const rename = `<button class="btn small icon" data-rename="${f.id}" title="Rename in the catalog – the file on disk keeps its name">✎</button>`;
-  if (f.runnable) return `<button class="btn small" data-run="${f.id}" title="Start this program (asks first)">▶ Run</button>${rename}`;
-  if (f.risky) return `<button class="btn small" disabled title="Scripts and shortcuts are not opened for safety">Open</button>${rename}`;
-  return `<button class="btn small" data-open="${f.id}" title="${esc(openHint(f.filename))}">Open</button>${rename}`;
+  if (f.isMissing) return `<span class="badge missing">${t('missing')}</span>`;
+  const rename = `<button class="btn small icon" data-rename="${f.id}" title="${t('Rename in the catalog – the file on disk keeps its name')}">✎</button>`;
+  if (f.runnable) return `<button class="btn small" data-run="${f.id}" title="${t('Start this program (asks first)')}">▶ ${t('Run')}</button>${rename}`;
+  if (f.risky) return `<button class="btn small" disabled title="${t('Scripts and shortcuts are not opened for safety')}">${t('Open')}</button>${rename}`;
+  return `<button class="btn small" data-open="${f.id}" title="${esc(openHint(f.filename))}">${t('Open')}</button>${rename}`;
 }
 
 /** Name shown in the catalog instead of the file name; the file keeps its name. */
 async function renameFileFlow(f) {
   const m = openModal({
-    title: 'Name in the catalog',
+    title: t('Name in the catalog'),
     width: 480,
     body: `<div class="notice err" id="rn-error" hidden></div>
-      <label class="field-label" for="rn-name">Name shown in Game Curator</label>
+      <label class="field-label" for="rn-name">${t('Name shown in Game Curator')}</label>
       <input class="field" id="rn-name" maxlength="120" spellcheck="false" style="width:100%;margin-top:4px" value="${esc(f.displayName || f.filename)}">
-      <p class="hint" style="margin:10px 0 0">Only the name in the catalog changes. The file on disk keeps its own name:</p>
+      <p class="hint" style="margin:10px 0 0">${t('Only the name in the catalog changes. The file on disk keeps its own name:')}</p>
       <div class="mono muted">${esc(f.filePath)}</div>`,
-    footer: `${f.displayName ? '<button class="btn left" id="rn-reset">Use the file name</button>' : ''}<button class="btn" data-close>Cancel</button><button class="btn gold" id="rn-save">Save</button>`,
+    footer: `${f.displayName ? `<button class="btn left" id="rn-reset">${t('Use the file name')}</button>` : ''}<button class="btn" data-close>${t('Cancel')}</button><button class="btn gold" id="rn-save">${t('Save')}</button>`,
     onKey: (e) => {
       if (e.key === 'Enter' && e.target.id === 'rn-name') { e.preventDefault(); m.el.querySelector('#rn-save').click(); return true; }
       return false;
@@ -221,7 +222,7 @@ async function renameFileFlow(f) {
   setTimeout(() => q('#rn-name').select(), 0);
   if (!(await m.result)) return;
   await refreshContent();
-  toast('Name in the catalog changed. The file itself was not renamed.');
+  toast(t('Name in the catalog changed. The file itself was not renamed.'));
 }
 
 function summary(files) {
@@ -230,52 +231,52 @@ function summary(files) {
   const parts = CATEGORY_GROUPS
     .map(([cat, , one, many]) => [present.filter((f) => f.category === cat).length, one, many])
     .filter(([n]) => n > 0)
-    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
-  return `<div class="archive-summary"><b>${present.length} file${present.length === 1 ? '' : 's'}</b> · ${formatBytes(total)}${parts.length ? ` <span class="muted">— ${esc(parts.join(' · '))}</span>` : ''}</div>`;
+    .map(([n, one, many]) => tn(n, one, many));
+  return `<div class="archive-summary"><b>${tn(present.length, '{n} file', '{n} files')}</b> · ${formatBytes(total)}${parts.length ? ` <span class="muted">— ${esc(parts.join(' · '))}</span>` : ''}</div>`;
 }
 
 function fileRow(f) {
   return `<tr class="${f.isMissing ? 'missing' : ''}">
-    <td class="pri">${f.runnable ? `<button class="primary-btn ${f.isPrimary ? 'on' : ''}" data-primary="${f.id}" title="${f.isPrimary ? 'Main installer (click to unmark)' : 'Mark as the main installer'}">★</button>` : ''}</td>
+    <td class="pri">${f.runnable ? `<button class="primary-btn ${f.isPrimary ? 'on' : ''}" data-primary="${f.id}" title="${f.isPrimary ? t('Main installer (click to unmark)') : t('Mark as the main installer')}">★</button>` : ''}</td>
     ${f.displayName
-      ? `<td class="fname renamed" title="${esc(`${f.displayName}\nFile on disk: ${f.filePath}`)}">${esc(f.displayName)}</td>`
+      ? `<td class="fname renamed" title="${esc(`${f.displayName}\n${t('File on disk: {path}', { path: f.filePath })}`)}">${esc(f.displayName)}</td>`
       : `<td class="mono fname" title="${esc(f.filePath)}">${esc(f.filePath)}</td>`}
-    <td class="cat"><select class="field cat-select" data-cat="${f.id}" title="Category">${categoryOptions(f)}</select></td>
+    <td class="cat"><select class="field cat-select" data-cat="${f.id}" title="${t('Category')}">${categoryOptions(f)}</select></td>
     <td class="num">${formatBytes(f.sizeBytes)}</td>
     <td class="act">${fileActions(f)}</td></tr>`;
 }
 
 function renderContent() {
   const c = content;
-  if (!c) return '<div class="muted">Reading the folder…</div>';
-  let html = `<div class="pathline"><span class="led ${c.folderAvailable ? 'on' : 'off'}" title="${c.folderAvailable ? 'Folder available' : 'Folder not available'}"></span>
+  if (!c) return `<div class="muted">${t('Reading the folder…')}</div>`;
+  let html = `<div class="pathline"><span class="led ${c.folderAvailable ? 'on' : 'off'}" title="${c.folderAvailable ? t('Folder available') : t('Folder not available')}"></span>
       <span class="mono">${esc(c.folder)}</span>
-      <button class="btn small" id="pf-open-folder" ${c.folderAvailable ? '' : 'disabled'}>Open Folder</button>
-      <button class="btn small icon" id="pf-refresh" title="Read the folder again">↻</button></div>`;
+      <button class="btn small" id="pf-open-folder" ${c.folderAvailable ? '' : 'disabled'}>${t('Open Folder')}</button>
+      <button class="btn small icon" id="pf-refresh" title="${t('Read the folder again')}">↻</button></div>`;
   if (!game.folderPortable) {
-    html += '<div class="notice info">This folder is on another drive than the archive; its path will not follow the archive to another computer.</div>';
+    html += `<div class="notice info">${t('This folder is on another drive than the archive; its path will not follow the archive to another computer.')}</div>`;
   }
   if (!c.folderAvailable) {
-    html += '<div class="notice warn">The folder is not available right now (is the drive connected?). The records below are kept unchanged.</div>';
+    html += `<div class="notice warn">${t('The folder is not available right now (is the drive connected?). The records below are kept unchanged.')}</div>`;
   }
   if (!c.files.length) {
-    return `${html}<div class="muted">No files in this folder.</div>`;
+    return `${html}<div class="muted">${t('No files in this folder.')}</div>`;
   }
   html += summary(c.files);
   const dirs = c.dirs.filter((d) => d.depth <= 2).slice(0, 40);
   if (dirs.length) {
-    html += `<div class="subfolders">${dirs.map((d) => `<span class="chip" data-dir="${esc(d.relPath)}" title="Open in Explorer">▸ ${esc(d.relPath)}</span>`).join('')}</div>`;
+    html += `<div class="subfolders">${dirs.map((d) => `<span class="chip" data-dir="${esc(d.relPath)}" title="${t('Open in Explorer')}">▸ ${esc(d.relPath)}</span>`).join('')}</div>`;
   }
   html += '<table class="list files"><tbody>';
   for (const [cat, label] of CATEGORY_GROUPS) {
     const group = c.files.filter((f) => f.category === cat);
     if (!group.length) continue;
     const size = group.filter((f) => !f.isMissing).reduce((a, f) => a + (f.sizeBytes || 0), 0);
-    html += `<tr class="group"><th colspan="5">${esc(label)} <span class="n">${group.length} · ${formatBytes(size)}</span></th></tr>`;
+    html += `<tr class="group"><th colspan="5">${esc(t(label))} <span class="n">${group.length} · ${formatBytes(size)}</span></th></tr>`;
     html += group.map(fileRow).join('');
   }
   html += '</tbody></table>';
-  if (c.truncated) html += '<div class="notice info" style="margin-top:8px">This folder is very large; only part of it is listed.</div>';
+  if (c.truncated) html += `<div class="notice info" style="margin-top:8px">${t('This folder is very large; only part of it is listed.')}</div>`;
   return html;
 }
 
@@ -283,7 +284,7 @@ function renderContent() {
 
 function renderJournal() {
   if (!recent.length) {
-    return '<p class="hint" style="margin:0">Impressions, analysis, things you found out while playing or reading about the game – the journal keeps them with the archive.</p>';
+    return `<p class="hint" style="margin:0">${t('Impressions, analysis, things you found out while playing or reading about the game – the journal keeps them with the archive.')}</p>`;
   }
   return `<div class="entries">${recent.map((e) => entryHtml(e, { compact: true, showGame: false })).join('')}</div>`;
 }
@@ -295,33 +296,33 @@ function render() {
   const main = document.getElementById('main');
   main.innerHTML = `<div class="view">
     <div class="profile-head">
-      <button class="btn" id="pf-back">◄ Library</button>
+      <button class="btn" id="pf-back">◄ ${t('Library')}</button>
       <h1 class="game-title${install ? ' inst' : ''}" title="${esc(g.title)}">${esc(g.title)}</h1>
       ${g.isAvailable ? '' : '<span class="badge offline">OFFLINE</span>'}
-      <button class="btn" id="pf-edit">✎ Edit</button>
-      <button class="btn danger" id="pf-remove">Remove from catalog</button>
+      <button class="btn" id="pf-edit">✎ ${t('Edit')}</button>
+      <button class="btn danger" id="pf-remove">${t('Remove from catalog')}</button>
     </div>
     <div class="profile-grid" id="pf-grid" style="--split:${Number(state.config?.profileSplit) || SPLIT_DEFAULT}">
-      <div class="pf-split" id="pf-split" role="separator" aria-orientation="vertical" aria-label="Divider between the game and its archive"
-        tabindex="0" title="Drag to change the width of the panels · double-click to reset"><span></span></div>
-      <section class="panel bevel-out pf-a"><div class="strip">Game</div>
+      <div class="pf-split" id="pf-split" role="separator" aria-orientation="vertical" aria-label="${t('Divider between the game and its archive')}"
+        tabindex="0" title="${t('Drag to change the width of the panels · double-click to reset')}"><span></span></div>
+      <section class="panel bevel-out pf-a"><div class="strip">${t('Game')}</div>
         <div class="panel-body" id="pf-info">${renderInfo()}</div></section>
       <div class="pf-right">
-        <section class="panel bevel-out pf-b"><div class="strip">Archive<span class="spacer"></span><span class="count" id="pf-file-count"></span></div>
+        <section class="panel bevel-out pf-b"><div class="strip">${t('Archive')}<span class="spacer"></span><span class="count" id="pf-file-count"></span></div>
           <div class="panel-body" id="pf-content">${renderContent()}</div></section>
-        <section class="panel bevel-out pf-f"><div class="strip">Additional files<span class="spacer"></span><span class="count" id="pf-add-count">${extras.length || ''}</span></div>
+        <section class="panel bevel-out pf-f"><div class="strip">${t('Additional files')}<span class="spacer"></span><span class="count" id="pf-add-count">${extras.length || ''}</span></div>
           <div class="panel-body" id="pf-additions">${additionsPanelHtml(extras)}</div></section>
       </div>
-      <section class="panel bevel-out pf-d"><div class="strip">What I know about this game</div>
+      <section class="panel bevel-out pf-d"><div class="strip">${t('What I know about this game')}</div>
         <div class="panel-body notes-body">
-          <textarea class="field" id="pf-notes" maxlength="50000" placeholder="Where this copy comes from, which edition and installer version it is, what the extras contain, facts and stories you found out…">${esc(g.archiveNotes)}</textarea>
-          <div class="row"><button class="btn small" id="pf-notes-save" disabled>Save</button><span class="hint" id="pf-notes-state">Saved automatically when you leave the field.</span></div>
+          <textarea class="field" id="pf-notes" maxlength="50000" placeholder="${esc(t('Where this copy comes from, which edition and installer version it is, what the extras contain, facts and stories you found out…'))}">${esc(g.archiveNotes)}</textarea>
+          <div class="row"><button class="btn small" id="pf-notes-save" disabled>${t('Save')}</button><span class="hint" id="pf-notes-state">${t('Saved automatically when you leave the field.')}</span></div>
         </div></section>
-      <section class="panel bevel-out pf-c"><div class="strip">Gaming Journal<span class="spacer"></span><span class="count">${g.journalCount || ''}</span></div>
-        <div class="panel-body"><div class="row" style="margin-bottom:10px"><button class="btn" id="pf-new-entry">＋ New entry</button>
-          ${g.journalCount > recent.length ? `<button class="btn small" id="pf-all-entries">All ${g.journalCount} entries in the Journal</button>` : ''}</div>
+      <section class="panel bevel-out pf-c"><div class="strip">${t('Gaming Journal')}<span class="spacer"></span><span class="count">${g.journalCount || ''}</span></div>
+        <div class="panel-body"><div class="row" style="margin-bottom:10px"><button class="btn" id="pf-new-entry">＋ ${t('New entry')}</button>
+          ${g.journalCount > recent.length ? `<button class="btn small" id="pf-all-entries">${t('All {n} entries in the Journal', { n: g.journalCount })}</button>` : ''}</div>
           <div id="pf-journal">${renderJournal()}</div></div></section>
-      <section class="panel bevel-out pf-e"><div class="strip">Screenshots<span class="spacer"></span><span class="count" id="pf-shot-count">${shots.length || ''}</span></div>
+      <section class="panel bevel-out pf-e"><div class="strip">${t('Screenshots')}<span class="spacer"></span><span class="count" id="pf-shot-count">${shots.length || ''}</span></div>
         <div class="panel-body" id="pf-shots">${shotsPanelHtml(shots, g.id)}</div></section>
     </div></div>`;
   updateFileCount();
@@ -330,7 +331,7 @@ function render() {
 
 function updateFileCount() {
   const el = document.getElementById('pf-file-count');
-  if (el && content) el.textContent = `${content.files.filter((f) => !f.isMissing).length} files`;
+  if (el && content) el.textContent = tn(content.files.filter((f) => !f.isMissing).length, '{n} file', '{n} files');
 }
 
 async function reloadGame() {
@@ -347,11 +348,11 @@ async function saveNotes() {
     game.archiveNotes = value;
     notesDirty = false;
     const st = document.getElementById('pf-notes-state');
-    if (st) st.textContent = 'Saved.';
+    if (st) st.textContent = t('Saved.');
     const b = document.getElementById('pf-notes-save');
     if (b) b.disabled = true;
   } catch (e) {
-    toast(`Notes were not saved: ${e}`, 'err');
+    toast(t('Notes were not saved: {error}', { error: e }), 'err');
     throw e;
   }
 }
@@ -401,18 +402,18 @@ async function refreshJournal() {
 async function removeFlow() {
   const p = await api.removalPreview(game.id);
   const m = openModal({
-    title: 'Remove from catalog',
+    title: t('Remove from catalog'),
     width: 540,
-    body: `<div class="dlg-icon warn">!</div><div class="dlg-text">Remove <b>${esc(p.title)}</b> from the catalog?
+    body: `<div class="dlg-icon warn">!</div><div class="dlg-text">${t('Remove <b>{title}</b> from the catalog?', { title: esc(p.title) })}
 
-<b>The game folder and its files will NOT be deleted, moved or changed:</b>
+<b>${t('The game folder and its files will NOT be deleted, moved or changed:')}</b>
 <span class="mono">${esc(p.folder)}</span>
 
-${p.journalEntries || p.fileRecords ? `Also removed from the database: ${p.journalEntries} journal entr${p.journalEntries === 1 ? 'y' : 'ies'} and ${p.fileRecords} file record${p.fileRecords === 1 ? '' : 's'}.` : ''}</div>
-      ${p.journalEntries ? '<label class="check" style="margin-top:12px"><input type="checkbox" id="rm-keep" checked> Keep readable copies of the journal entries in <span class="mono">Data/Journals</span></label>' : ''}
-      ${p.screenshots ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="rm-keep-shots" checked> Keep the ${p.screenshots} screenshot${p.screenshots === 1 ? '' : 's'} in <span class="mono">Data/Screenshots</span></label>` : ''}
-      ${p.additionCopies ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="rm-keep-adds" checked> Keep the ${p.additionCopies} copied additional file${p.additionCopies === 1 ? '' : 's'} in <span class="mono">Data/Additions</span></label>` : ''}`,
-    footer: '<button class="btn" data-close>Cancel</button><button class="btn danger" id="rm-ok">Remove from catalog</button>',
+${p.journalEntries || p.fileRecords ? t('Also removed from the database: {entries} and {records}.', { entries: tn(p.journalEntries, '{n} journal entry', '{n} journal entries'), records: tn(p.fileRecords, '{n} file record', '{n} file records') }) : ''}</div>
+      ${p.journalEntries ? `<label class="check" style="margin-top:12px"><input type="checkbox" id="rm-keep" checked> ${t('Keep readable copies of the journal entries in <span class="mono">Data/Journals</span>')}</label>` : ''}
+      ${p.screenshots ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="rm-keep-shots" checked> ${tn(p.screenshots, 'Keep the screenshot in <span class="mono">Data/Screenshots</span>', 'Keep the {n} screenshots in <span class="mono">Data/Screenshots</span>')}</label>` : ''}
+      ${p.additionCopies ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="rm-keep-adds" checked> ${tn(p.additionCopies, 'Keep the copied additional file in <span class="mono">Data/Additions</span>', 'Keep the {n} copied additional files in <span class="mono">Data/Additions</span>')}</label>` : ''}`,
+    footer: `<button class="btn" data-close>${t('Cancel')}</button><button class="btn danger" id="rm-ok">${t('Remove from catalog')}</button>`,
   });
   m.el.querySelector('#rm-ok').addEventListener('click', () => {
     const checked = (sel) => { const el = m.el.querySelector(sel); return el ? el.checked : true; };
@@ -422,7 +423,7 @@ ${p.journalEntries || p.fileRecords ? `Also removed from the database: ${p.journ
   const choice = await m.result;
   if (!choice) return;
   const result = await api.removeGame(game.id, choice.keep, choice.shots, choice.adds);
-  toast(`“${result.title}” was removed from the catalog. Its folder was not touched.`);
+  toast(t('“{title}” was removed from the catalog. Its folder was not touched.', { title: result.title }));
   await refreshFacets();
   navigate('library');
 }
@@ -447,22 +448,22 @@ function bind() {
 
   // installed on this PC
   byId('pf-install').addEventListener('click', (e) => {
-    const t = e.target;
+    const tg = e.target;
     const refresh = async () => { install = await api.installStatus(id); render(); };
-    if (t.closest('#pf-play')) return guard(playFlow);
-    if (t.closest('#pf-inst-folder')) return guard(() => api.openInstallFolder(id).then(() => toast('Installation folder opened.')));
-    if (t.closest('#pf-inst-locate')) {
+    if (tg.closest('#pf-play')) return guard(playFlow);
+    if (tg.closest('#pf-inst-folder')) return guard(() => api.openInstallFolder(id).then(() => toast(t('Installation folder opened.'))));
+    if (tg.closest('#pf-inst-locate')) {
       return guard(async () => {
         const st = await api.locateInstall(id);
-        if (st) { await refresh(); toast(st.canPlay ? 'Location saved. The game can be started with Play.' : 'Location saved.'); }
+        if (st) { await refresh(); toast(st.canPlay ? t('Location saved. The game can be started with Play.') : t('Location saved.')); }
       });
     }
-    if (t.closest('#pf-inst-forget')) {
+    if (tg.closest('#pf-inst-forget')) {
       return guard(async () => {
         const ok = await confirmBox({
-          title: 'Forget the location?',
-          html: `Game Curator will forget where <b>${esc(game.title)}</b> is installed on this PC.\nNothing on the disk is changed or deleted.`,
-          ok: 'Forget',
+          title: t('Forget the location?'),
+          html: t('Game Curator will forget where <b>{title}</b> is installed on this PC.\nNothing on the disk is changed or deleted.', { title: esc(game.title) }),
+          ok: t('Forget'),
         });
         if (!ok) return;
         await api.forgetInstall(id);
@@ -475,34 +476,34 @@ function bind() {
   // archive
   const contentEl = byId('pf-content');
   contentEl.addEventListener('click', (e) => {
-    const t = e.target;
-    if (t.closest('#pf-open-folder')) return guard(() => api.openGameFolder(id, null).then(() => toast('Folder opened.')));
-    if (t.closest('#pf-refresh')) return guard(async () => { await refreshContent(); toast('Folder contents refreshed.'); });
-    const dir = t.closest('[data-dir]');
+    const tg = e.target;
+    if (tg.closest('#pf-open-folder')) return guard(() => api.openGameFolder(id, null).then(() => toast(t('Folder opened.'))));
+    if (tg.closest('#pf-refresh')) return guard(async () => { await refreshContent(); toast(t('Folder contents refreshed.')); });
+    const dir = tg.closest('[data-dir]');
     if (dir) return guard(() => api.openGameFolder(id, dir.dataset.dir));
-    const open = t.closest('[data-open]');
-    if (open) return guard(() => api.openFile(id, Number(open.dataset.open)).then((how) => { if (how === 'external') toast('Opened with the default application.'); }));
-    const run = t.closest('[data-run]');
+    const open = tg.closest('[data-open]');
+    if (open) return guard(() => api.openFile(id, Number(open.dataset.open)).then((how) => { if (how === 'external') toast(t('Opened with the default application.')); }));
+    const run = tg.closest('[data-run]');
     if (run) {
       const f = content.files.find((x) => x.id === Number(run.dataset.run));
       return guard(async () => {
         const ok = await confirmBox({
-          title: 'Run program?',
-          html: `You are about to run:\n<span class="mono">${esc(f.filePath)}</span>\n\nPrograms and installers can make changes to your computer. Only run files you trust.\nGame Curator never runs anything on its own.`,
-          ok: 'Run',
-          cancel: 'Cancel',
+          title: t('Run program?'),
+          html: t('You are about to run:\n<span class="mono">{path}</span>\n\nPrograms and installers can make changes to your computer. Only run files you trust.\nGame Curator never runs anything on its own.', { path: esc(f.filePath) }),
+          ok: t('Run'),
+          cancel: t('Cancel'),
         });
         if (!ok) return;
         await api.runFile(id, f.id);
-        toast(`Started ${f.filename}.`);
+        toast(t('Started {name}.', { name: f.filename }));
       });
     }
-    const ren = t.closest('[data-rename]');
+    const ren = tg.closest('[data-rename]');
     if (ren) {
       const f = content.files.find((x) => x.id === Number(ren.dataset.rename));
       return guard(() => renameFileFlow(f));
     }
-    const prim = t.closest('[data-primary]');
+    const prim = tg.closest('[data-primary]');
     if (prim) {
       const fid = Number(prim.dataset.primary);
       const f = content.files.find((x) => x.id === fid);
@@ -531,15 +532,15 @@ function bind() {
 
   // screenshots
   byId('pf-shots').addEventListener('click', (e) => {
-    const t = e.target;
-    if (t.closest('#pf-add-shot')) {
+    const tg = e.target;
+    if (tg.closest('#pf-add-shot')) {
       return guard(async () => {
         const added = await addShots(id);
         if (added.length) await refreshShots();
       });
     }
-    if (t.closest('#pf-all-shots') || t.closest('[data-shot-all]')) return guard(() => galleryFlow());
-    const s = t.closest('[data-shot]');
+    if (tg.closest('#pf-all-shots') || tg.closest('[data-shot-all]')) return guard(() => galleryFlow());
+    const s = tg.closest('[data-shot]');
     if (s) return guard(() => galleryFlow(Number(s.dataset.shot)));
     return undefined;
   });
@@ -548,11 +549,11 @@ function bind() {
   bindAdditions(byId('pf-additions'), game, () => extras, refreshAdditions);
 
   // files dragged from Explorer
-  onFiles(document.querySelector('.pf-e'), SHOT_DROP_HINT, (files) => guard(async () => {
+  onFiles(document.querySelector('.pf-e'), t(SHOT_DROP_HINT), (files) => guard(async () => {
     const added = await addShots(id, null, files);
     if (added.length) await refreshShots();
   }));
-  onFiles(document.querySelector('.pf-f'), ADDITIONS_DROP_HINT, (files) => guard(async () => {
+  onFiles(document.querySelector('.pf-f'), t(ADDITIONS_DROP_HINT), (files) => guard(async () => {
     if (await addFiles(game, files)) await refreshAdditions();
   }));
   byId('pf-journal').addEventListener('click', (e) => {
@@ -575,19 +576,19 @@ function bind() {
   notes.addEventListener('input', () => {
     notesDirty = notes.value !== game.archiveNotes;
     byId('pf-notes-save').disabled = !notesDirty;
-    byId('pf-notes-state').textContent = notesDirty ? 'Unsaved changes.' : 'Saved.';
+    byId('pf-notes-state').textContent = notesDirty ? t('Unsaved changes.') : t('Saved.');
   });
   notes.addEventListener('change', () => saveNotes().catch(() => {}));
   notes.addEventListener('keydown', (e) => {
-    if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveNotes().then(() => toast('Notes saved.')).catch(() => {}); }
+    if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveNotes().then(() => toast(t('Notes saved.'))).catch(() => {}); }
   });
-  byId('pf-notes-save').addEventListener('click', () => saveNotes().then(() => toast('Notes saved.')).catch(() => {}));
+  byId('pf-notes-save').addEventListener('click', () => saveNotes().then(() => toast(t('Notes saved.'))).catch(() => {}));
 }
 
 export const profileView = {
   async show({ id }) {
     const main = document.getElementById('main');
-    main.innerHTML = '<div class="panel-body muted">Loading…</div>';
+    main.innerHTML = `<div class="panel-body muted">${t('Loading…')}</div>`;
     notesDirty = false;
     try {
       [game, recent, install, shots, extras] = await Promise.all([
@@ -595,7 +596,7 @@ export const profileView = {
         api.listScreenshots(id), api.listAdditions(id),
       ]);
     } catch (e) {
-      main.innerHTML = `<div class="panel-body"><div class="notice err">${esc(e)}</div><button class="btn" id="pf-back2">◄ Library</button></div>`;
+      main.innerHTML = `<div class="panel-body"><div class="notice err">${esc(e)}</div><button class="btn" id="pf-back2">◄ ${t('Library')}</button></div>`;
       document.getElementById('pf-back2').addEventListener('click', () => navigate('library'));
       return;
     }

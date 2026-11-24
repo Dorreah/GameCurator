@@ -2,6 +2,8 @@
 // journal entry right after a game started with Play has ended. No play time
 // is counted or shown.
 
+import { t, tm, applyStatic, onLangChange } from './i18n.js';
+
 const tauri = window.__TAURI__;
 const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
 const $ = (id) => document.getElementById(id);
@@ -11,12 +13,19 @@ function esc(s) {
 }
 
 let busy = false;
+let offer = null;
+
+function show() {
+  if (!offer) return;
+  $('of-text').innerHTML = `${t('You just finished playing <b>{title}</b>.', { title: esc(offer.title) })}\n\n${t('Would you like to write down your impressions in the Gaming Journal while they are still fresh?')}`;
+  $('of-more').textContent = offer.waiting ? t('+{n} more', { n: offer.waiting }) : '';
+}
 
 async function load() {
   const o = await invoke('journal_offer');
   if (!o) return;
-  $('of-text').innerHTML = `You just finished playing <b>${esc(o.title)}</b>.\n\nWould you like to write down your impressions in the Gaming Journal while they are still fresh?`;
-  $('of-more').textContent = o.waiting ? `+${o.waiting} more` : '';
+  offer = o;
+  show();
   busy = false;
 }
 
@@ -27,7 +36,7 @@ async function answer(write) {
     await invoke('answer_journal_offer', { write, never: $('of-never').checked });
   } catch (e) {
     busy = false;
-    $('of-text').textContent = String(e);
+    $('of-text').textContent = tm(String(e));
   }
 }
 
@@ -40,4 +49,5 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => e.preventDefault());
 tauri.event.listen('gc-offer-changed', () => load().catch(() => {}));
-load().catch((e) => { $('of-text').textContent = String(e); });
+load().catch((e) => { $('of-text').textContent = tm(String(e)); });
+onLangChange(() => { applyStatic(); show(); });

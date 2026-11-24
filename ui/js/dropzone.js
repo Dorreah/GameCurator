@@ -5,6 +5,7 @@
 
 import { listen } from './api.js';
 import { toast } from './ui.js';
+import { t, tn } from './i18n.js';
 
 let current = null;
 
@@ -36,17 +37,17 @@ export function initDropzones() {
     const zone = zoneAt(p.x, p.y);
     highlight(null);
     if (!p.files.length) {
-      toast('Only files can be dropped (not folders).', 'err');
+      toast(t('Only files can be dropped (not folders).'), 'err');
       return;
     }
     if (!zone) {
-      toast('Drop files on “Screenshots” or “Additional files” in the profile of a game.', 'err');
+      toast(t('Drop files on “Screenshots” or “Additional files” in the profile of a game.'), 'err');
       return;
     }
     const detail = { files: p.files, handled: false };
     zone.dispatchEvent(new CustomEvent('gc-files', { detail }));
-    if (!detail.handled) toast('These files cannot be added here.', 'err');
-    else if (p.skipped) toast(`${p.skipped} folder(s) left out – only files can be added.`);
+    if (!detail.handled) toast(t('These files cannot be added here.'), 'err');
+    else if (p.skipped) toast(tn(p.skipped, '{n} folder left out – only files can be added.', '{n} folders left out – only files can be added.'));
   });
 }
 

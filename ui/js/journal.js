@@ -7,32 +7,33 @@ import { navigate } from './store.js';
 import { createEditor, sanitizeHtml, plainText } from './editor.js';
 import { shotStrip, addShots, openGallery, SHOT_DROP_HINT } from './gallery.js';
 import { onFiles } from './dropzone.js';
+import { t, tn } from './i18n.js';
 
 /** HTML of one entry. Content is sanitized again at render time. */
 export function entryHtml(e, { compact = false, showGame = true } = {}) {
   return `<article class="entry${compact ? ' compact' : ''}" data-entry="${e.id}">
     <div class="entry-head">
       <span class="entry-date">${esc(formatDate(e.entryDate))}</span>
-      <span class="entry-title">${esc(e.title || '(untitled)')}</span>
+      <span class="entry-title">${esc(e.title || t('(untitled)'))}</span>
       ${showGame ? `<button class="entry-game" data-game="${e.gameId}">${esc(e.gameTitle)}</button>` : ''}
-      <button class="btn small" data-edit-entry="${e.id}">Edit</button>
-      <button class="btn small" data-delete-entry="${e.id}" title="Delete entry">✕</button>
+      <button class="btn small" data-edit-entry="${e.id}">${t('Edit')}</button>
+      <button class="btn small" data-delete-entry="${e.id}" title="${t('Delete entry')}">✕</button>
     </div>
-    <div class="entry-body rich">${compact ? esc(plainText(e.content)) || '<span class="muted">(no text)</span>' : sanitizeHtml(e.content) || '<p class="muted">(no text)</p>'}</div>
+    <div class="entry-body rich">${compact ? esc(plainText(e.content)) || `<span class="muted">${t('(no text)')}</span>` : sanitizeHtml(e.content) || `<p class="muted">${t('(no text)')}</p>`}</div>
     ${e.screenshots && e.screenshots.length ? `<div class="entry-shots">${shotStrip(e.screenshots, { max: compact ? 4 : 8, gameId: e.gameId })}</div>` : ''}
   </article>`;
 }
 
 export async function deleteEntry(entry) {
   const ok = await confirmBox({
-    title: 'Delete journal entry',
-    html: `Delete the entry <b>${esc(entry.title || '(untitled)')}</b> from ${esc(formatDate(entry.entryDate))}?\n\nThis cannot be undone (database backups are kept in Data/Backups).`,
-    ok: 'Delete',
+    title: t('Delete journal entry'),
+    html: t('Delete the entry <b>{title}</b> from {date}?\n\nThis cannot be undone (database backups are kept in Data/Backups).', { title: esc(entry.title || t('(untitled)')), date: esc(formatDate(entry.entryDate)) }),
+    ok: t('Delete'),
     danger: true,
   });
   if (!ok) return false;
   await api.deleteJournal(entry.id);
-  toast('Journal entry deleted.');
+  toast(t('Journal entry deleted.'));
   return true;
 }
 
@@ -43,30 +44,30 @@ export async function deleteEntry(entry) {
 export async function openEntryEditor({ entry = null, gameId = null } = {}) {
   const titles = await api.gameTitles();
   if (!titles.length) {
-    toast('Add a game first - every journal entry belongs to a game.', 'err');
+    toast(t('Add a game first - every journal entry belongs to a game.'), 'err');
     return null;
   }
   const selected = entry ? entry.gameId : gameId;
   const m = openModal({
-    title: entry ? 'Edit journal entry' : 'New journal entry',
+    title: entry ? t('Edit journal entry') : t('New journal entry'),
     width: 780,
     body: `<div class="notice err" id="je-error" hidden></div>
       <div class="form-grid" style="grid-template-columns:90px 1fr">
-        <label class="req" for="je-game">Game</label>
-        <select class="field" id="je-game">${selected ? '' : '<option value="">– choose a game –</option>'}
-          ${titles.map((t) => `<option value="${t.id}" ${t.id === selected ? 'selected' : ''}>${esc(t.title)}</option>`).join('')}</select>
-        <label class="req" for="je-date">Date</label>
+        <label class="req" for="je-game">${t('Game')}</label>
+        <select class="field" id="je-game">${selected ? '' : `<option value="">${t('– choose a game –')}</option>`}
+          ${titles.map((x) => `<option value="${x.id}" ${x.id === selected ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>
+        <label class="req" for="je-date">${t('Date')}</label>
         <div><input class="field" id="je-date" type="date" style="width:170px" value="${esc(entry ? entry.entryDate : todayIso())}"></div>
-        <label for="je-title">Title</label>
-        <input class="field" id="je-title" maxlength="200" value="${esc(entry ? entry.title : '')}" placeholder="e.g. Why the Von Braun still feels alive">
+        <label for="je-title">${t('Title')}</label>
+        <input class="field" id="je-title" maxlength="200" value="${esc(entry ? entry.title : '')}" placeholder="${esc(t('e.g. Why the Von Braun still feels alive'))}">
       </div>
       <div id="je-editor" style="margin-top:10px"></div>
-      <div class="hint" style="margin-top:6px">Some starting points: What stayed with you? What do you notice now that you missed before? What did you find out about how the game was made? · Ctrl+S saves.</div>
-      <div class="je-shots"><div class="je-shots-head"><b>Screenshots</b>
-          <span class="hint">A moment from the game that belongs to this entry.</span><span class="spacer"></span>
-          <button class="btn small" id="je-add-shot" type="button">＋ Add screenshot…</button></div>
+      <div class="hint" style="margin-top:6px">${t('Some starting points: What stayed with you? What do you notice now that you missed before? What did you find out about how the game was made? · Ctrl+S saves.')}</div>
+      <div class="je-shots"><div class="je-shots-head"><b>${t('Screenshots')}</b>
+          <span class="hint">${t('A moment from the game that belongs to this entry.')}</span><span class="spacer"></span>
+          <button class="btn small" id="je-add-shot" type="button">＋ ${t('Add screenshot…')}</button></div>
         <div id="je-shot-list"></div></div>`,
-    footer: '<button class="btn" id="je-cancel">Cancel</button><button class="btn gold" id="je-save">Save entry</button>',
+    footer: `<button class="btn" id="je-cancel">${t('Cancel')}</button><button class="btn gold" id="je-save">${t('Save entry')}</button>`,
     closable: true,
     onKey: (e) => {
       if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); return true; }
@@ -84,23 +85,23 @@ export async function openEntryEditor({ entry = null, gameId = null } = {}) {
   function renderShots() {
     q('je-shot-list').innerHTML = attached.length
       ? `<div class="shot-strip">${attached.map((x) => `<span class="shot attached"><img src="${esc(imgSrc(x.thumbnailPath))}" alt="">
-          <button class="shot-x" data-detach="${x.id}" title="Remove from this entry (stays in the game's screenshots)">✕</button></span>`).join('')}</div>`
-      : '<p class="hint" style="margin:4px 0 0">No screenshots yet.</p>';
+          <button class="shot-x" data-detach="${x.id}" title="${esc(t("Remove from this entry (stays in the game's screenshots)"))}">✕</button></span>`).join('')}</div>`
+      : `<p class="hint" style="margin:4px 0 0">${t('No screenshots yet.')}</p>`;
   }
   renderShots();
   const addToEntry = (files) => guard(async () => {
     const gid = Number(q('je-game').value);
-    if (!gid) { toast('Choose the game first.', 'err'); return; }
+    if (!gid) { toast(t('Choose the game first.'), 'err'); return; }
     const added = await addShots(gid, null, files);
     if (!added.length) return;
     pending += added.length;
     attached = [...attached, ...added.map((x) => ({ id: x.id, thumbnailPath: x.thumbnailPath }))];
     q('je-game').disabled = true; // the screenshots belong to this game now
-    q('je-game').title = 'Screenshots were added for this game.';
+    q('je-game').title = t('Screenshots were added for this game.');
     renderShots();
   });
   q('je-add-shot').addEventListener('click', () => addToEntry(null));
-  onFiles(m.el.querySelector('.je-shots'), 'Drop pictures here to add them to this entry', addToEntry);
+  onFiles(m.el.querySelector('.je-shots'), t('Drop pictures here to add them to this entry'), addToEntry);
   q('je-shot-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-detach]');
     if (!b) return;
@@ -121,10 +122,10 @@ export async function openEntryEditor({ entry = null, gameId = null } = {}) {
 
   async function cancel() {
     if (snapshot() !== initial) {
-      const discard = await confirmBox({ title: 'Discard changes?', message: 'The entry has unsaved changes. Discard them?', ok: 'Discard', danger: true });
+      const discard = await confirmBox({ title: t('Discard changes?'), message: t('The entry has unsaved changes. Discard them?'), ok: t('Discard'), danger: true });
       if (!discard) return;
     }
-    if (pending) toast('The added screenshots stay in the game\'s screenshots.');
+    if (pending) toast(t("The added screenshots stay in the game's screenshots."));
     m.close(null);
   }
   m.el.querySelector('[data-close]').replaceWith(m.el.querySelector('[data-close]').cloneNode(true));
@@ -141,13 +142,13 @@ export async function openEntryEditor({ entry = null, gameId = null } = {}) {
       title: q('je-title').value.trim(),
       content: editor.getHtml(),
     };
-    if (!input.gameId) { err.textContent = 'Please choose the game this entry belongs to.'; err.hidden = false; return; }
+    if (!input.gameId) { err.textContent = t('Please choose the game this entry belongs to.'); err.hidden = false; return; }
     saving = true;
     q('je-save').disabled = true;
     try {
       const saved = entry ? await api.updateJournal(entry.id, input) : await api.createJournal(input);
       await saveShots(saved.id);
-      toast(entry ? 'Journal entry saved.' : 'Journal entry created.');
+      toast(entry ? t('Journal entry saved.') : t('Journal entry created.'));
       m.close(saved);
     } catch (e) {
       err.textContent = String(e);
@@ -183,10 +184,10 @@ function groupHtml(g) {
   const first = g.entries[g.entries.length - 1].entryDate;
   const span = first === latest ? formatDate(latest) : `${formatDate(first)} – ${formatDate(latest)}`;
   return `<section class="jgroup" data-group="${g.gameId}">
-    <header class="jgroup-head" data-game="${g.gameId}" title="Open ${esc(g.title)}">
+    <header class="jgroup-head" data-game="${g.gameId}" title="${esc(t('Open {title}', { title: g.title }))}">
       <div class="jgroup-cover">${thumb ? `<img src="${esc(imgSrc(thumb))}" loading="lazy" decoding="async" alt="">` : ''}</div>
       <div><div class="jgroup-title game-title${installed.has(g.gameId) ? ' inst' : ''}">${esc(g.title)}</div>
-        <div class="hint">${g.entries.length} entr${g.entries.length === 1 ? 'y' : 'ies'} · ${span}</div></div>
+        <div class="hint">${tn(g.entries.length, '{n} entry', '{n} entries')} · ${span}</div></div>
     </header>
     <div class="entries">${g.entries.map((e) => entryHtml(e, { showGame: false })).join('')}</div>
   </section>`;
@@ -205,13 +206,12 @@ async function load(focusGame) {
   }
   const groups = groupByGame(entries);
   document.getElementById('jr-count').textContent = entries.length
-    ? `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} · ${groups.length} game${groups.length === 1 ? '' : 's'}`
+    ? `${tn(entries.length, '{n} entry', '{n} entries')} · ${tn(groups.length, '{n} game', '{n} games')}`
     : '';
   list.innerHTML = entries.length
     ? `<div class="journal-page">${groups.map(groupHtml).join('')}</div>`
-    : `<div class="empty bevel-out"><h2>The journal is empty</h2>
-       <p>Journal entries are written in the profile of each game – impressions, analysis, things you found out.
-       Here they all come together, game by game.</p></div>`;
+    : `<div class="empty bevel-out"><h2>${t('The journal is empty')}</h2>
+       <p>${t('Journal entries are written in the profile of each game – impressions, analysis, things you found out. Here they all come together, game by game.')}</p></div>`;
   if (focusGame) {
     const el = list.querySelector(`[data-group="${focusGame}"]`);
     if (el) el.scrollIntoView({ block: 'start' });
@@ -222,7 +222,7 @@ export const journalView = {
   async show(params = {}) {
     const main = document.getElementById('main');
     main.innerHTML = `<div class="view">
-      <div class="strip"><span>Gaming Journal</span><span class="count" id="jr-count"></span></div>
+      <div class="strip"><span>${t('Gaming Journal')}</span><span class="count" id="jr-count"></span></div>
       <div class="library-scroll" id="jr-list"></div></div>`;
     document.getElementById('jr-list').addEventListener('click', (e) => {
       const shot = e.target.closest('[data-shot], [data-shot-all]');

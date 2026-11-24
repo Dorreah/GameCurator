@@ -1,5 +1,8 @@
 // Application state and navigation (no view imports here to avoid cycles).
 
+import { t, mark, getLang, setLang } from './i18n.js';
+import { api } from './api.js';
+
 export const state = {
   info: null,      // app_info
   config: null,    // AppConfig
@@ -7,7 +10,7 @@ export const state = {
   view: null,
   params: {},
   archiveOk: true,
-  query: { search: '', sort: 'title' },
+  query: { search: '', sort: 'title', genres: [], tags: [] },
   running: new Set(), // games started with Play that are still running
 };
 
@@ -38,21 +41,39 @@ export async function navigate(name, params = {}) {
   await view.show(params);
 }
 
+/**
+ * Switches the interface language: saves it in config.json, relabels the
+ * window chrome (app.js listens to 'gc-lang') and shows the current view
+ * again in the new language.
+ */
+export async function changeLanguage(next) {
+  setLang(next);
+  document.dispatchEvent(new CustomEvent('gc-lang'));
+  if (state.config && state.config.language !== getLang()) {
+    try {
+      state.config = await api.saveConfig({ ...state.config, language: getLang() });
+    } catch (_) { /* kept for this session */ }
+  }
+  const view = views[state.view];
+  if (view) await view.show(state.params);
+}
+
 export const CARD_WIDTH = { small: 132, medium: 168, large: 216 };
 
 export const THEMES = {
-  classic: { name: 'Classic', description: 'VGA-era DOS launcher: pixel font, bevels, a hint of violet' },
-  amber: { name: 'Terminal CRT Amber', description: 'Soft amber terminal with warm white and light red' },
-  matrix: { name: 'Matrix Terminal', description: 'Soft green digital rain with white and yellow' },
-  dos: { name: 'DOS Midnight', description: 'MS-DOS text mode with the IBM VGA font, a shade darker' },
+  classic: { name: 'Classic', description: mark('VGA-era DOS launcher: pixel font, bevels, a hint of violet') },
+  amber: { name: 'Terminal CRT Amber', description: mark('Soft amber terminal with warm white and light red') },
+  matrix: { name: 'Matrix Terminal', description: mark('Soft green digital rain with white and yellow') },
+  dos: { name: 'DOS Midnight', description: mark('MS-DOS text mode with the IBM VGA font, a shade darker') },
 };
 
-/** Fonts of the Classic look (Settings > Appearance). */
+/** Fonts of the Classic look (Settings > Appearance). Names and notes are
+ * English keys, translated where they are shown. */
 export const CLASSIC_FONTS = {
-  'pixel-operator': { name: 'Pixel Operator', note: 'pixel font, 16 px grid (default)' },
-  dogica: { name: 'Dogica', note: 'Game Boy-style 8 px pixel font' },
-  'geist-pixel': { name: 'Geist Pixel', note: 'modern pixel design, drawn smoothly' },
-  'roboto-slab': { name: 'Roboto Slab', note: 'calm slab serif for long reading' },
+  'pixel-operator': { name: 'Pixel Operator', note: mark('pixel font, 16 px grid (default)') },
+  dogica: { name: 'Dogica', note: mark('Game Boy-style 8 px pixel font') },
+  'geist-pixel': { name: 'Geist Pixel', note: mark('modern pixel design, drawn smoothly') },
+  'roboto-slab': { name: 'Roboto Slab', note: mark('calm slab serif for long reading') },
 };
 
 /** Switches the font of the Classic look (the text-mode themes keep theirs). */
@@ -77,7 +98,7 @@ const AUDIO = ['mp3', 'ogg', 'oga', 'opus', 'flac', 'wav', 'm4a', 'aac'];
 export function openHint(name) {
   const ext = String(name).split('.').pop().toLowerCase();
   const own = state.config?.builtinViewer !== false;
-  if (ext === 'pdf') return own ? 'Read in the Game Curator viewer' : 'Open with the default application';
-  if (AUDIO.includes(ext)) return own ? 'Play in the Game Curator music player' : 'Open with the default application';
-  return 'Open with the default application';
+  if (ext === 'pdf') return own ? t('Read in the Game Curator viewer') : t('Open with the default application');
+  if (AUDIO.includes(ext)) return own ? t('Play in the Game Curator music player') : t('Open with the default application');
+  return t('Open with the default application');
 }

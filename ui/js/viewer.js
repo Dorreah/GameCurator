@@ -5,6 +5,7 @@
 
 import * as pdfjs from '../vendor/pdfjs/pdf.min.mjs';
 import { pix } from './pixicons.js';
+import { t, tn, tm, applyStatic, onLangChange } from './i18n.js';
 
 const tauri = window.__TAURI__;
 const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
@@ -38,14 +39,20 @@ let current = 1;
 const wanted = new Set();          // pages to draw, nearest first
 let drawing = false;
 
+// the status line is kept as a function, so it can be shown again in
+// another language when the main window switches it
+let statusFn = () => t('Loading…');
+let statusErr = false;
 function status(text, isError = false) {
-  ui.status.textContent = text;
+  statusFn = typeof text === 'function' ? text : () => text;
+  statusErr = isError;
+  ui.status.textContent = statusFn();
   ui.status.classList.toggle('error', isError);
 }
 
 function fail(e) {
-  const msg = String(e?.message || e || 'Unknown error');
-  status(msg, true);
+  const raw = String(e?.message || e || '');
+  status(() => (raw ? tm(raw) : t('Unknown error')), true);
 }
 
 function mb(bytes) {
@@ -227,7 +234,7 @@ async function drawNext() {
     await draw(pages[i]);
   } catch (e) {
     if (e?.name !== 'RenderingCancelledException') {
-      pages[i].el.dataset.error = 'This page could not be shown.';
+      pages[i].el.dataset.error = t('This page could not be shown.');
       console.warn(e);
     }
   } finally {
@@ -305,7 +312,7 @@ ui.in.addEventListener('click', () => zoomBy(1));
 ui.external.addEventListener('click', () => {
   if (!doc) return;
   invoke('media_open_external', { token: doc.token })
-    .then(() => status('Opened in the default application.'))
+    .then(() => status(() => t('Opened in the default application.')))
     .catch(fail);
 });
 
@@ -369,7 +376,7 @@ async function open() {
   doc = await invoke('viewer_document');
   document.title = `${doc.name} \u2014 ${doc.game}`;
   if (!doc.size) throw new Error('The file is empty.');
-  status(`Loading ${mb(doc.size)}…`);
+  status(() => t('Loading {size}…', { size: mb(doc.size) }));
   const initial = await read(0, Math.min(doc.size, 2 * CHUNK));
   const task = pdfjs.getDocument({
     range: new RustRange(doc.size, initial),
@@ -382,7 +389,7 @@ async function open() {
   });
   task.onPassword = () => {
     task.destroy();
-    fail('This PDF is protected by a password. Use “Open in default app” to read it.');
+    status(() => t('This PDF is protected by a password. Use “Open in default app” to read it.'), true);
   };
   pdf = await task.promise;
   const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
@@ -397,15 +404,21 @@ async function open() {
   ui.doc.appendChild(frag);
   ui.pages.textContent = String(pdf.numPages);
   for (const b of [ui.page, ui.zoom, ui.out, ui.in]) b.disabled = false;
-  status(`${pdf.numPages} ${pdf.numPages === 1 ? 'page' : 'pages'} · ${mb(doc.size)}`);
+  status(() => `${tn(pdf.numPages, '{n} page', '{n} pages')} · ${mb(doc.size)}`);
   applyZoom('width');
   ui.scroll.focus();
 }
 
 open().catch((e) => {
   console.error(e);
-  const msg = e?.name === 'InvalidPDFException'
-    ? 'This file is not a readable PDF document. Use “Open in default app” to try another program.'
-    : e;
-  fail(msg);
+  if (e?.name === 'InvalidPDFException') {
+    status(() => t('This file is not a readable PDF document. Use “Open in default app” to try another program.'), true);
+  } else fail(e);
+});
+
+// the language follows the main window
+onLangChange(() => {
+  applyStatic();
+  ui.status.textContent = statusFn();
+  ui.status.classList.toggle('error', statusErr);
 });

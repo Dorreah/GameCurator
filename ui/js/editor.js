@@ -2,6 +2,8 @@
 // bold/italic/underline, quotes) and the HTML sanitizer used for every
 // journal text that is saved or displayed.
 
+import { t, mark } from './i18n.js';
+
 const ALLOWED = new Set(['P', 'H2', 'H3', 'UL', 'OL', 'LI', 'B', 'STRONG', 'I', 'EM', 'U', 'BR', 'BLOCKQUOTE']);
 const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'TEMPLATE', 'SVG', 'MATH', 'NOSCRIPT', 'TITLE', 'HEAD']);
 const RENAME = { DIV: 'P', H1: 'H2', H4: 'H3', H5: 'H3', H6: 'H3' };
@@ -42,25 +44,25 @@ export function plainText(html) {
 }
 
 const TOOLS = [
-  { cmd: 'formatBlock', arg: 'p', label: '¶', title: 'Paragraph' },
-  { cmd: 'formatBlock', arg: 'h2', label: 'H1', title: 'Heading' },
-  { cmd: 'formatBlock', arg: 'h3', label: 'H2', title: 'Subheading' },
+  { cmd: 'formatBlock', arg: 'p', label: '¶', title: mark('Paragraph') },
+  { cmd: 'formatBlock', arg: 'h2', label: 'H1', title: mark('Heading') },
+  { cmd: 'formatBlock', arg: 'h3', label: 'H2', title: mark('Subheading') },
   { sep: true },
-  { cmd: 'bold', label: '<b>B</b>', title: 'Bold (Ctrl+B)' },
-  { cmd: 'italic', label: '<i>I</i>', title: 'Italic (Ctrl+I)' },
-  { cmd: 'underline', label: '<u>U</u>', title: 'Underline (Ctrl+U)' },
+  { cmd: 'bold', label: '<b>B</b>', title: mark('Bold (Ctrl+B)') },
+  { cmd: 'italic', label: '<i>I</i>', title: mark('Italic (Ctrl+I)') },
+  { cmd: 'underline', label: '<u>U</u>', title: mark('Underline (Ctrl+U)') },
   { sep: true },
-  { cmd: 'insertUnorderedList', label: '• List', title: 'Bulleted list' },
-  { cmd: 'insertOrderedList', label: '1. List', title: 'Numbered list' },
-  { cmd: 'formatBlock', arg: 'blockquote', label: '❝ Quote', title: 'Quote' },
+  { cmd: 'insertUnorderedList', label: '• List', title: mark('Bulleted list') },
+  { cmd: 'insertOrderedList', label: '1. List', title: mark('Numbered list') },
+  { cmd: 'formatBlock', arg: 'blockquote', label: '❝ Quote', title: mark('Quote') },
 ];
 
 /** Builds the editor into `container`. Returns { getHtml, setHtml, focus }. */
 export function createEditor(container, initialHtml = '') {
   container.innerHTML = `
-    <div class="editor-toolbar">${TOOLS.map((t, i) => (t.sep ? '<span class="sep" style="width:6px"></span>'
-      : `<button type="button" class="btn small" data-tool="${i}" title="${t.title}">${t.label}</button>`)).join('')}</div>
-    <div class="editor rich" contenteditable="true" spellcheck="true" data-placeholder="What did you notice, feel or find out?"></div>`;
+    <div class="editor-toolbar">${TOOLS.map((tool, i) => (tool.sep ? '<span class="sep" style="width:6px"></span>'
+      : `<button type="button" class="btn small" data-tool="${i}" title="${t(tool.title)}">${tool.label.replace(/List|Quote/, (w) => t(w === 'List' ? mark('List') : mark('Quote')))}</button>`)).join('')}</div>
+    <div class="editor rich" contenteditable="true" spellcheck="true" data-placeholder="${t('What did you notice, feel or find out?')}"></div>`;
   const ed = container.querySelector('.editor');
   ed.innerHTML = sanitizeHtml(initialHtml);
   try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (_) { /* older engines */ }
@@ -69,9 +71,9 @@ export function createEditor(container, initialHtml = '') {
     const b = e.target.closest('[data-tool]');
     if (!b) return;
     e.preventDefault(); // keep the selection inside the editor
-    const t = TOOLS[Number(b.dataset.tool)];
+    const tool = TOOLS[Number(b.dataset.tool)];
     ed.focus();
-    document.execCommand(t.cmd, false, t.arg ? `<${t.arg}>` : null);
+    document.execCommand(tool.cmd, false, tool.arg ? `<${tool.arg}>` : null);
   });
 
   ed.addEventListener('paste', (e) => {

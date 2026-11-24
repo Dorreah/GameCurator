@@ -1,28 +1,36 @@
 // Shared UI helpers: escaping, formatting, modal windows, notifications.
 
+import { t, tm, mark } from './i18n.js';
+
+/** File categories; the labels are English keys - use categoryLabel(). */
 export const CATEGORY_LABELS = {
-  installer: 'Installer',
-  executable: 'Program',
-  data: 'Data',
-  manual: 'Manual',
-  image: 'Image',
-  music: 'Music',
-  archive: 'Archive',
-  text: 'Text',
-  other: 'Other',
+  installer: mark('Installer'),
+  executable: mark('Program'),
+  data: mark('Data'),
+  manual: mark('Manual'),
+  image: mark('Image'),
+  music: mark('Music'),
+  archive: mark('Archive'),
+  text: mark('Text'),
+  other: mark('Other'),
 };
 
-/** Order, heading, singular and plural of the file groups in a game's archive. */
+export function categoryLabel(c) {
+  return t(CATEGORY_LABELS[c] || CATEGORY_LABELS.other);
+}
+
+/** Order, heading, singular and plural of the file groups in a game's archive
+ * (English keys; the plural is also the key of the Czech plural forms). */
 export const CATEGORY_GROUPS = [
-  ['installer', 'Installers', 'installer', 'installers'],
-  ['executable', 'Programs', 'program', 'programs'],
-  ['data', 'Installer data', 'data file', 'data files'],
-  ['manual', 'Manuals', 'manual', 'manuals'],
-  ['music', 'Music', 'music file', 'music files'],
-  ['image', 'Images', 'image', 'images'],
-  ['archive', 'Archives', 'archive', 'archives'],
-  ['text', 'Texts', 'text', 'texts'],
-  ['other', 'Other files', 'other file', 'other files'],
+  ['installer', mark('Installers'), mark('{n} installer'), mark('{n} installers')],
+  ['executable', mark('Programs'), mark('{n} program'), mark('{n} programs')],
+  ['data', mark('Installer data'), mark('{n} data file'), mark('{n} data files')],
+  ['manual', mark('Manuals'), mark('{n} manual'), mark('{n} manuals')],
+  ['music', mark('Music'), mark('{n} music file'), mark('{n} music files')],
+  ['image', mark('Images'), mark('{n} image'), mark('{n} images')],
+  ['archive', mark('Archives'), mark('{n} archive'), mark('{n} archives')],
+  ['text', mark('Texts'), mark('{n} text'), mark('{n} texts')],
+  ['other', mark('Other files'), mark('{n} other file'), mark('{n} other files')],
 ];
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -74,7 +82,7 @@ export function status(msg, kind = '') {
   el.className = `sb-msg ${kind}`;
   el.title = msg;
   clearTimeout(msgTimer);
-  if (kind) msgTimer = setTimeout(() => { el.textContent = 'Ready.'; el.className = 'sb-msg'; }, 8000);
+  if (kind) msgTimer = setTimeout(() => { el.textContent = t('Ready.'); el.className = 'sb-msg'; }, 8000);
 }
 
 let toastTimer;
@@ -108,7 +116,7 @@ export function openModal({ title, body, footer = '', width = 520, closable = tr
   overlay.innerHTML = `
     <div class="window" role="dialog" aria-modal="true" style="width:${width}px">
       <div class="window-title"><span>${esc(title)}</span><span class="spacer"></span>
-        ${closable ? '<button class="btn x" data-close title="Close">✕</button>' : ''}</div>
+        ${closable ? `<button class="btn x" data-close title="${esc(t('Close'))}">✕</button>` : ''}</div>
       <div class="window-body"></div>
       ${footer ? `<div class="window-foot">${footer}</div>` : ''}
     </div>`;
@@ -166,7 +174,7 @@ export function alertBox(message, { title = 'Game Curator', kind = 'info' } = {}
  * Confirmation dialog. Resolves to true/false. `html` allows rich body
  * content (already escaped by the caller); `danger` styles the OK button.
  */
-export function confirmBox({ title = 'Please confirm', message = '', html = '', ok = 'OK', cancel = 'Cancel', kind = 'warn', danger = false, width = 480 }) {
+export function confirmBox({ title = t('Please confirm'), message = '', html = '', ok = 'OK', cancel = t('Cancel'), kind = 'warn', danger = false, width = 480 }) {
   const icon = { info: 'i', warn: '!', err: '✕' }[kind] || '!';
   const m = openModal({
     title,
@@ -181,11 +189,11 @@ export function confirmBox({ title = 'Please confirm', message = '', html = '', 
 }
 
 /** Runs an async action, reporting errors in a message box. */
-export async function guard(fn, { errorTitle = 'Something went wrong' } = {}) {
+export async function guard(fn, { errorTitle = t('Something went wrong') } = {}) {
   try {
     return await fn();
   } catch (e) {
-    const msg = typeof e === 'string' ? e : (e && e.message) || String(e);
+    const msg = tm(typeof e === 'string' ? e : (e && e.message) || String(e));
     status(msg, 'err');
     await alertBox(msg, { title: errorTitle, kind: 'err' });
     return undefined;
@@ -194,7 +202,7 @@ export async function guard(fn, { errorTitle = 'Something went wrong' } = {}) {
 
 /** Small checkbox icon: is the game installed on this computer? */
 export function installBox(on, extraClass = '') {
-  const title = on ? 'Installed on this PC' : 'Not installed on this PC';
+  const title = on ? t('Installed on this PC') : t('Not installed on this PC');
   return `<span class="inst-box ${on ? 'on' : 'off'} ${extraClass}" title="${title}" aria-label="${title}" role="img">`
     + '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/>'
     + '<path d="M4.4 8.4l2.5 2.5 4.9-5.4"/></svg></span>';

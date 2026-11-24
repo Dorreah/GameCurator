@@ -2,7 +2,7 @@
 <html lang="en" data-theme="classic">
 <head>
   <meta charset="utf-8">
-  <title>PDF viewer - Game Curator</title>
+  <title data-i18n-doc="PDF viewer - Game Curator">PDF viewer - Game Curator</title>
   <link rel="stylesheet" href="css/retro.css">
   <link rel="stylesheet" href="css/themes.css">
   <link rel="stylesheet" href="css/classic.css">
@@ -13,17 +13,17 @@
 <body class="media-window">
   <div class="vw">
     <div class="toolbar vw-bar">
-      <button class="btn icon" id="vw-prev" title="Previous page (Page Up)" disabled></button>
+      <button class="btn icon" id="vw-prev" title="Previous page (Page Up)" data-i18n-title="Previous page (Page Up)" disabled></button>
       <span class="vw-pageno">
-        <input class="field" id="vw-page" value="1" inputmode="numeric" aria-label="Page" disabled>
+        <input class="field" id="vw-page" value="1" inputmode="numeric" aria-label="Page" data-i18n-aria="Page" disabled>
         <span class="muted">/</span> <span id="vw-pages">&ndash;</span>
       </span>
-      <button class="btn icon" id="vw-next" title="Next page (Page Down)" disabled></button>
+      <button class="btn icon" id="vw-next" title="Next page (Page Down)" data-i18n-title="Next page (Page Down)" disabled></button>
       <span class="sep"></span>
-      <button class="btn icon" id="vw-out" title="Zoom out (Ctrl -)" disabled>-</button>
-      <select class="field" id="vw-zoom" aria-label="Zoom" disabled>
-        <option value="width">Fit width</option>
-        <option value="page">Whole page</option>
+      <button class="btn icon" id="vw-out" title="Zoom out (Ctrl -)" data-i18n-title="Zoom out (Ctrl -)" disabled>-</button>
+      <select class="field" id="vw-zoom" aria-label="Zoom" data-i18n-aria="Zoom" disabled>
+        <option value="width" data-i18n="Fit width">Fit width</option>
+        <option value="page" data-i18n="Whole page">Whole page</option>
         <option value="0.5">50 %</option>
         <option value="0.75">75 %</option>
         <option value="1">100 %</option>
@@ -33,14 +33,14 @@
         <option value="3">300 %</option>
         <option value="custom" hidden>-</option>
       </select>
-      <button class="btn icon" id="vw-in" title="Zoom in (Ctrl +)" disabled>+</button>
+      <button class="btn icon" id="vw-in" title="Zoom in (Ctrl +)" data-i18n-title="Zoom in (Ctrl +)" disabled>+</button>
       <span class="grow"></span>
-      <button class="btn small" id="vw-external" title="Open the PDF in the default Windows application">Open in default app</button>
+      <button class="btn small" id="vw-external" title="Open the PDF in the default Windows application" data-i18n-title="Open the PDF in the default Windows application" data-i18n="Open in default app">Open in default app</button>
     </div>
     <div class="vw-scroll" id="vw-scroll" tabindex="0">
       <div class="vw-doc" id="vw-doc"></div>
     </div>
-    <div class="vw-status" id="vw-status">Loading&hellip;</div>
+    <div class="vw-status" id="vw-status" data-i18n="Loading…">Loading&hellip;</div>
   </div>
 </body>
 </html>

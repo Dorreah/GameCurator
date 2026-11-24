@@ -270,6 +270,7 @@ html.term .notice.warn { border-color: var(--t-hi); color: var(--t-hi); }
 html.term .notice.warn::before { content: "!! "; font-weight: bold; }
 html.term .notice.err { background: var(--t-hi); color: var(--t-bg); border-color: var(--t-hi); font-weight: bold; }
 html.term .notice.err::before { content: "ERROR: "; }
+html.term:lang(cs) .notice.err::before { content: "CHYBA: "; }
 html.term .notice.ok { border-color: var(--t-dim); color: var(--t-fg); }
 html.term .notice.ok::before { content: "OK: "; font-weight: bold; }
 html.term .notice.info { border-style: dashed; color: var(--t-fg); }
@@ -498,3 +499,10 @@ html.term .welcome p { color: var(--t-fg); }
 html.term .welcome b { color: var(--t-strong); }
 html.term .welcome .welcome-motto { font: 13px var(--mono); border-left: 1px dashed var(--t-fg); color: var(--t-hi); }
 html.term [data-dropzone].drop-over::after { font-family: var(--mono); text-transform: uppercase; color: var(--t-hi); background: rgba(0, 0, 0, 0.85); }
+
+/* Game details from GOG.com */
+html.term .gog-item { background: transparent; border-color: var(--t-faint); }
+html.term .gog-item.on { border-color: var(--t-dim); }
+html.term .badge.found { background: var(--t-bar); color: var(--t-on-bar); border-color: var(--t-bar); }
+html.term .badge.check { color: var(--t-hi); border-style: dashed; }
+html.term .gog-new { color: var(--t-strong, var(--t-fg)); }

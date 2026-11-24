@@ -3,6 +3,8 @@
 // slider - from "fit the whole picture" up to 5x. The result is a crop in
 // fractions of the picture, which the core renders into the thumbnail.
 
+import { t } from './i18n.js';
+
 const MAX_ZOOM = 5;
 
 /**
@@ -14,17 +16,17 @@ export function createCropper(host, { src, crop = null, width = 200, onChange = 
   const fh = Math.round((width * 4) / 3);
   host.innerHTML = `<div class="cropper">
     <div class="crop-frame" style="width:${fw}px;height:${fh}px" tabindex="0"
-      title="Drag to choose the part shown on the card · scroll to zoom · double-click to fill the frame">
+      title="${t('Drag to choose the part shown on the card · scroll to zoom · double-click to fill the frame')}">
       <img alt="" draggable="false"><div class="crop-grid" aria-hidden="true"></div>
     </div>
     <div class="crop-tools" style="width:${fw}px">
       <span class="crop-sign" aria-hidden="true">−</span>
-      <input type="range" class="crop-zoom" min="0" max="1000" step="1" value="0" aria-label="Zoom">
+      <input type="range" class="crop-zoom" min="0" max="1000" step="1" value="0" aria-label="${t('Zoom')}">
       <span class="crop-sign" aria-hidden="true">+</span>
     </div>
     <div class="crop-tools" style="width:${fw}px">
-      <button class="btn small" type="button" data-fit title="Show the whole picture">Fit</button>
-      <button class="btn small" type="button" data-fill title="Fill the frame, centred">Fill</button>
+      <button class="btn small" type="button" data-fit title="${t('Show the whole picture')}">${t('Fit')}</button>
+      <button class="btn small" type="button" data-fill title="${t('Fill the frame, centred')}">${t('Fill')}</button>
     </div></div>`;
   const frame = host.querySelector('.crop-frame');
   const img = host.querySelector('img');

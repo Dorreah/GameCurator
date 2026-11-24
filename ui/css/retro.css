@@ -259,6 +259,29 @@ select.cat-select:hover, select.cat-select:focus { border-color: var(--line); co
 .notice.err { background: #2c1518; border-color: #6a2e33; color: #f5c9c9; }
 .notice.ok { background: #15241a; border-color: #2f5a3a; color: #c9ecd0; }
 .notice.info { background: var(--surface-2); border-color: var(--line); color: #cfcadb; }
+.notice .help-list { margin: 6px 0 0; padding-left: 18px; }
+.notice .help-list li { margin: 2px 0; }
+
+/* ---------- help (scanner, game folder, setup) ---------- */
+.help-box { margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--line); background: var(--surface-2); color: var(--text); }
+.help-box .mono { word-break: normal; overflow-wrap: anywhere; }
+.help-box[hidden] { display: none !important; }
+.help-box b { color: var(--text); }
+.help-box p { margin: 2px 0 8px; }
+.help-box ul { margin: 2px 0 8px; padding-left: 16px; }
+.help-box li { margin: 2px 0; }
+.help-cols { display: grid; grid-template-columns: minmax(270px, 1fr) minmax(240px, 1.15fr) minmax(240px, 1fr); gap: 6px 20px; }
+@media (max-width: 1180px) { .help-cols { grid-template-columns: 1fr 1fr; } }
+.help-tree { margin: 4px 0 6px; padding: 6px 8px; font: 11px/1.4 Consolas, "Lucida Console", "DejaVu Sans Mono", monospace; color: var(--muted); background: var(--bg); border: 1px solid var(--line); white-space: pre; overflow-x: auto; user-select: text; }
+.scan-under { margin-top: 6px; align-items: center; }
+.scan-under .spacer { flex: 1; }
+.help-toggle[aria-expanded="true"] { color: var(--accent-hi); }
+.btn.help-toggle:not(.small) { min-width: 26px; padding: 4px 8px; font-weight: bold; }
+
+/* ---------- language switch (welcome, setup) ---------- */
+.wz-lang { float: right; margin: 0 0 6px 12px; }
+.lang-switch { display: inline-flex; gap: 12px; align-items: center; }
+.lang-switch .check { margin: 0; }
 
 /* ---------- journal ---------- */
 .entries { display: flex; flex-direction: column; gap: 10px; }
@@ -293,7 +316,7 @@ select.cat-select:hover, select.cat-select:focus { border-color: var(--line); co
 .cand-genre { width: 110px; }
 .cand-files { color: var(--muted); font-size: 11.5px; max-width: 260px; }
 .thumb-mini { width: 30px; height: 40px; object-fit: cover; border: 1px solid var(--line); vertical-align: middle; }
-.sticky-actions { position: sticky; bottom: 0; margin-top: 10px; padding: 8px 0; background: var(--surface); border-top: 1px solid var(--line); }
+.sticky-actions { position: sticky; bottom: 0; z-index: 2; margin-top: 10px; padding: 8px 0; background: var(--surface); border-top: 1px solid var(--line); }
 
 /* ---------- settings ---------- */
 .settings { max-width: 860px; }
@@ -497,3 +520,59 @@ html.dragging-files [data-dropzone] { outline: 1px dashed var(--accent-dim); out
 .welcome p { line-height: 1.65; color: #cfcadb; margin: 0 0 12px; }
 .welcome b { color: var(--text); }
 .welcome .welcome-motto { margin: 18px 0 6px; padding-left: 12px; border-left: 3px solid var(--accent); font: italic 14px var(--logo-font); color: var(--accent-hi); }
+
+/* Game details from GOG.com (Archive Scanner) */
+/* sources of game details */
+.src-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px; margin: 2px 0 8px; }
+.src-option { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; }
+.src-option.on { border-color: var(--accent); }
+.src-option input { margin-top: 3px; }
+.src-option .hint { display: inline-block; margin-top: 2px; }
+.src-name { color: var(--text); }
+.src-key { font-size: 0.9em; color: var(--muted); }
+.src-key.ok { color: var(--ok, #6fbf73); }
+.src-sent { margin: 0 0 10px; }
+.btn.link { background: none; border: none; box-shadow: none; padding: 0 2px; color: var(--accent-hi); text-decoration: underline; cursor: pointer; min-height: 0; }
+.btn.link:hover { color: var(--text); }
+.gog-list { display: flex; flex-direction: column; gap: 8px; }
+.gog-item { border: 1px solid var(--line); background: var(--surface-2); padding: 8px 10px; }
+.gog-item.on { border-color: var(--accent-dim); }
+.gog-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gog-head .check { margin: 0; }
+.gog-match { color: var(--muted); }
+.gog-match b { color: var(--text); }
+.gog-other { flex: none; width: auto; max-width: 340px; }
+.gog-body { display: flex; gap: 12px; margin-top: 6px; align-items: flex-start; }
+.gog-cover { flex: none; width: 72px; height: auto; border: 1px solid var(--line); }
+.gog-changes { flex: 1; border-collapse: collapse; }
+.gog-changes td { padding: 2px 6px; vertical-align: top; }
+.gog-changes td:first-child { width: 22px; }
+.gog-label { width: 90px; color: var(--muted); white-space: nowrap; }
+.gog-old { color: var(--muted); }
+.gog-changes tr:has(input:checked) .gog-old:not(.muted) { text-decoration: line-through; }
+.gog-new { color: var(--text); }
+.gog-changes tr:not(:has(input:checked)) .gog-new { color: var(--muted); }
+.gog-search { margin-top: 6px; }
+.gog-search .field { max-width: 360px; }
+.badge.found { color: var(--ok); border-color: var(--ok); }
+.badge.check { color: var(--warn); border-color: #5a4a2a; }
+
+/* Library filter: genre and tags (funnel button next to Sort) */
+.filter-wrap { position: relative; display: inline-flex; }
+#lib-filter { display: inline-flex; align-items: center; gap: 6px; }
+.funnel { flex: none; }
+.filter-pop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; width: min(560px, calc(100vw - 260px)); max-width: none; max-height: none; margin: 0; }
+.filter-pop[hidden], .filter-bar[hidden] { display: none !important; }
+.filter-cols { display: grid; grid-template-columns: 1fr 1fr; }
+.filter-col { min-width: 0; padding: 8px 10px; }
+.filter-col + .filter-col { border-left: 1px solid var(--line); }
+.filter-title { margin-bottom: 6px; font-weight: bold; }
+.filter-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; }
+.filter-list .check { display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
+.filter-list .f-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-foot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.filter-foot .hint { flex: 1; }
+.filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 10px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.filter-bar .chip { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+.chip .x { padding: 0 0 0 2px; border: none; background: none; color: var(--muted); font: inherit; line-height: 1; cursor: pointer; }
+.chip .x:hover { color: var(--text); }

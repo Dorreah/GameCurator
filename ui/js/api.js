@@ -1,5 +1,7 @@
 // Thin wrapper around Tauri IPC. All file-system work happens in Rust.
 
+import { tm } from './i18n.js';
+
 const tauri = window.__TAURI__;
 
 if (!tauri || !tauri.core) {
@@ -8,8 +10,11 @@ if (!tauri || !tauri.core) {
   throw new Error('Tauri runtime not available');
 }
 
+/** Invokes a Rust command; its error messages arrive translated. */
 export function call(cmd, args = {}) {
-  return tauri.core.invoke(cmd, args);
+  return tauri.core.invoke(cmd, args).catch((e) => {
+    throw typeof e === 'string' ? tm(e) : e;
+  });
 }
 
 export function listen(event, handler) {
@@ -85,6 +90,17 @@ export const api = {
   startScan: (root, depth) => call('start_scan', { root, depth }),
   cancelScan: () => call('cancel_scan'),
   importCandidates: (items) => call('import_candidates', { items }),
+
+  detailsCounts: () => call('details_counts'),
+  detailsStart: (source, scope, ids) => call('details_start', { source, scope, ids }),
+  detailsCancel: () => call('details_cancel'),
+  detailsResults: () => call('details_results'),
+  detailsClear: () => call('details_clear'),
+  detailsChoose: (gameId, productId) => call('details_choose', { gameId, productId }),
+  detailsSearch: (gameId, query) => call('details_search', { gameId, query }),
+  detailsApply: (items) => call('details_apply', { items }),
+  detailsOpenSearch: (source, query) => call('details_open_search', { source, query }),
+  detailsOpenPage: (gameId) => call('details_open_page', { gameId }),
 
   createBackup: () => call('create_backup'),
   listBackups: () => call('list_backups'),

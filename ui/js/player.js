@@ -3,6 +3,7 @@
 // there, so seeking is instant even on a slow USB drive.
 
 import { pix } from './pixicons.js';
+import { t, tn, tm, mark, applyStatic, onLangChange } from './i18n.js';
 
 const tauri = window.__TAURI__;
 const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
@@ -47,79 +48,85 @@ function clock(sec) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${r}` : `${m}:${r}`;
 }
 
+// the message is kept as a function, so it can be shown again in another
+// language when the main window switches it
+let messageFn = () => '';
+let messageErr = false;
 function message(text, isError = false) {
-  ui.msg.textContent = text;
+  messageFn = typeof text === 'function' ? text : () => text;
+  messageErr = isError;
+  ui.msg.textContent = messageFn();
   ui.msg.classList.toggle('error', isError);
 }
 
 function playIcon() {
   const playing = !audio.paused && !audio.ended;
   ui.play.innerHTML = pix(playing ? 'pause' : 'play', 27);
-  ui.play.title = playing ? 'Pause (Space)' : 'Play (Space)';
+  ui.play.title = playing ? t('Pause (Space)') : t('Play (Space)');
 }
 
 function volumeUi() {
   ui.vol.value = String(audio.volume);
   ui.mute.innerHTML = pix(audio.muted || audio.volume === 0 ? 'mute' : 'volume');
-  ui.mute.title = audio.muted ? 'Sound on' : 'Mute';
+  ui.mute.title = audio.muted ? t('Sound on') : t('Mute');
   ui.mute.classList.toggle('pressed', audio.muted);
 }
 
 function repeatUi() {
   ui.repeat.innerHTML = pix('repeat') + (repeat === 'one' ? '<span class="pl-one">1</span>' : '');
   ui.repeat.classList.toggle('pressed', repeat !== 'off');
-  ui.repeat.title = { off: 'Repeat: off', all: 'Repeat: all tracks', one: 'Repeat: this track' }[repeat];
+  ui.repeat.title = t({ off: mark('Repeat: off'), all: mark('Repeat: all tracks'), one: mark('Repeat: this track') }[repeat]);
 }
 
 function renderList() {
   const tracks = playlist?.tracks || [];
   const digits = String(tracks.length).length < 2 ? 2 : String(tracks.length).length;
   // "01 - Main Theme": the names already carry their numbers
-  const numbered = tracks.length > 0 && tracks.every((t) => /^\d/.test(t.name));
+  const numbered = tracks.length > 0 && tracks.every((trk) => /^\d/.test(trk.name));
   ui.list.classList.toggle('numbered', numbered);
-  ui.list.innerHTML = tracks.map((t, i) => `
-    <li><button class="pl-track${i === index ? ' on' : ''}" data-i="${i}" title="${esc(t.name)}">
+  ui.list.innerHTML = tracks.map((trk, i) => `
+    <li><button class="pl-track${i === index ? ' on' : ''}" data-i="${i}" title="${esc(trk.name)}">
       <span class="pl-mark">${i === index ? pix('note', 18) : ''}</span>
       ${numbered ? '' : `<span class="pl-num">${String(i + 1).padStart(digits, '0')}</span>`}
-      <span class="pl-name">${esc(t.name)}</span>
+      <span class="pl-name">${esc(trk.name)}</span>
     </button></li>`).join('');
-  ui.count.textContent = tracks.length ? `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}` : '';
+  ui.count.textContent = tracks.length ? tn(tracks.length, '{n} track', '{n} tracks') : '';
   ui.list.querySelector('.pl-track.on')?.scrollIntoView({ block: 'nearest' });
 }
 
 function headerUi() {
-  const t = playlist?.tracks[index];
-  ui.game.textContent = playlist ? playlist.game : 'Music';
-  ui.title.textContent = t ? t.name : ' ';
-  ui.pos.textContent = t ? `${index + 1} / ${playlist.tracks.length}` : '';
-  ui.external.disabled = !t;
-  document.title = playlist ? `${playlist.game} \u2014 Music` : 'Music \u2014 Game Curator';
-  if ('mediaSession' in navigator && t) {
+  const trk = playlist?.tracks[index];
+  ui.game.textContent = playlist ? playlist.game : t('Music');
+  ui.title.textContent = trk ? trk.name : ' ';
+  ui.pos.textContent = trk ? `${index + 1} / ${playlist.tracks.length}` : '';
+  ui.external.disabled = !trk;
+  document.title = playlist ? `${playlist.game} \u2014 ${t('Music')}` : `${t('Music')} \u2014 Game Curator`;
+  if ('mediaSession' in navigator && trk) {
     try {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: t.name, album: playlist.game, artist: playlist.game });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: trk.name, album: playlist.game, artist: playlist.game });
     } catch { /* not supported */ }
   }
 }
 
-async function readTrack(t, seq) {
+async function readTrack(trk, seq) {
   const parts = [];
   let loaded = 0;
-  while (loaded < t.size) {
-    const buf = await invoke('media_read', { token: t.token, offset: loaded, length: Math.min(PIECE, t.size - loaded) });
+  while (loaded < trk.size) {
+    const buf = await invoke('media_read', { token: trk.token, offset: loaded, length: Math.min(PIECE, trk.size - loaded) });
     if (seq !== loadSeq) return null;
     if (!buf.byteLength) break;
     parts.push(buf);
     loaded += buf.byteLength;
-    if (t.size > PIECE) message(`Loading ${Math.round((loaded / t.size) * 100)} %`);
+    if (trk.size > PIECE) { const pct = Math.round((loaded / trk.size) * 100); message(() => t('Loading {pct} %', { pct })); }
   }
-  return { blob: new Blob(parts, { type: MIME[t.ext] || 'audio/mpeg' }), loaded };
+  return { blob: new Blob(parts, { type: MIME[trk.ext] || 'audio/mpeg' }), loaded };
 }
 
 async function load(i, autoplay = true) {
   if (!playlist || i < 0 || i >= playlist.tracks.length) return;
   const seq = ++loadSeq;
   index = i;
-  const t = playlist.tracks[i];
+  const trk = playlist.tracks[i];
   audio.pause();
   ui.seek.disabled = true;
   ui.seek.value = '0';
@@ -127,13 +134,13 @@ async function load(i, autoplay = true) {
   ui.dur.textContent = '0:00';
   headerUi();
   renderList();
-  if (t.size > MAX_TRACK) {
-    message('This file is too large to play here.', true);
+  if (trk.size > MAX_TRACK) {
+    message(() => t('This file is too large to play here.'), true);
     return;
   }
-  message('Loading…');
+  message(() => t('Loading…'));
   try {
-    const got = await readTrack(t, seq);
+    const got = await readTrack(trk, seq);
     if (!got) return;
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = URL.createObjectURL(got.blob);
@@ -145,11 +152,11 @@ async function load(i, autoplay = true) {
       audio.play().catch((e) => {
         // a decoding problem is reported by the error event
         playIcon();
-        if (e?.name === 'NotAllowedError') message('Press play to start.');
+        if (e?.name === 'NotAllowedError') message(() => t('Press play to start.'));
       });
     }
   } catch (e) {
-    if (seq === loadSeq) message(String(e?.message || e), true);
+    if (seq === loadSeq) { const raw = String(e?.message || e); message(() => tm(raw), true); }
   }
 }
 
@@ -178,7 +185,7 @@ function setPlaylist(p) {
   if (playlist && p.seq <= playlist.seq) return;
   const start = Math.min(p.start || 0, p.tracks.length - 1);
   const same = playlist && audio.src && start === index
-    && p.tracks.length === playlist.tracks.length && p.tracks.every((t, i) => t.token === playlist.tracks[i].token);
+    && p.tracks.length === playlist.tracks.length && p.tracks.every((trk, i) => trk.token === playlist.tracks[i].token);
   playlist = p;
   if (same) {
     // the track that is already playing was opened again: keep playing
@@ -227,10 +234,10 @@ ui.seek.addEventListener('change', () => {
   if (Number.isFinite(audio.duration)) audio.currentTime = Number(ui.seek.value);
 });
 ui.external.addEventListener('click', () => {
-  const t = playlist?.tracks[index];
-  if (!t) return;
+  const trk = playlist?.tracks[index];
+  if (!trk) return;
   audio.pause();
-  invoke('media_open_external', { token: t.token }).then(() => message('Opened in the default application.')).catch((e) => message(String(e), true));
+  invoke('media_open_external', { token: trk.token }).then(() => message(() => t('Opened in the default application.'))).catch((e) => message(() => tm(String(e)), true));
 });
 
 audio.addEventListener('loadedmetadata', () => {
@@ -255,7 +262,7 @@ audio.addEventListener('ended', () => {
 });
 audio.addEventListener('error', () => {
   if (!audio.src) return;
-  message('This track cannot be played here. Try “Open in default app”.', true);
+  message(() => t('This track cannot be played here. Try “Open in default app”.'), true);
   playIcon();
 });
 
@@ -303,4 +310,16 @@ volumeUi();
 repeatUi();
 playIcon();
 tauri.event.listen('gc-player-load', (e) => setPlaylist(e.payload));
-invoke('player_state').then(setPlaylist).catch((e) => message(String(e), true));
+invoke('player_state').then(setPlaylist).catch((e) => message(() => tm(String(e)), true));
+
+// the language follows the main window
+onLangChange(() => {
+  applyStatic();
+  playIcon();
+  volumeUi();
+  repeatUi();
+  renderList();
+  headerUi();
+  ui.msg.textContent = messageFn();
+  ui.msg.classList.toggle('error', messageErr);
+});
