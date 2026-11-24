@@ -23,6 +23,8 @@ mod state;
 mod system;
 mod viewer;
 mod offer;
+mod details;
+mod lang;
 
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -53,6 +55,7 @@ pub fn run() {
             std::process::exit(1);
         }
     };
+    lang::init_from_archive(&root);
     system::prepare_webview_runtime(&root);
     let webview_version = match system::check_webview() {
         Ok(v) => v,
@@ -64,18 +67,13 @@ pub fn run() {
     let OpenedArchive { layout, mut db, archive_id, id_status, db_created } = match archive::open_archive(&root) {
         Ok(o) => o,
         Err(e) => {
-            system::fatal(
-                TITLE,
-                &format!(
-                    "The archive could not be opened.\n\nLocation: {}\n\n{e}\n\nIf the drive is write-protected, remove the protection and start Game Curator again.",
-                    paths::display(&root)
-                ),
-            );
+            system::fatal(TITLE, &lang::archive_open_failed(&paths::display(&root), &e.to_string()));
             std::process::exit(3);
         }
     };
 
     let cfg = config::load(&layout.config_path());
+    lang::set(&cfg.language);
     let mut notes = Vec::new();
     if let Ok(conn) = db.conn() {
         match images::cleanup_orphans(conn, &layout) {
@@ -108,6 +106,7 @@ pub fn run() {
         running_games: Mutex::new(Default::default()),
         viewers: Mutex::new(Default::default()),
         offers: Mutex::new(Default::default()),
+        details: Mutex::new(Default::default()),
     };
 
     let built = tauri::Builder::default()
@@ -180,11 +179,21 @@ pub fn run() {
             viewer::media_open_external,
             offer::journal_offer,
             offer::answer_journal_offer,
+            details::details_counts,
+            details::details_start,
+            details::details_cancel,
+            details::details_results,
+            details::details_clear,
+            details::details_choose,
+            details::details_search,
+            details::details_apply,
+            details::details_open_search,
+            details::details_open_page,
         ])
         .setup(move |app| {
             std::fs::create_dir_all(&webview_dir)?;
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("Game Curator 0.1")
+                .title("Game Curator 0.2")
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(1000.0, 640.0)
                 .data_directory(webview_dir.clone());
@@ -206,7 +215,7 @@ pub fn run() {
     let app = match built {
         Ok(app) => app,
         Err(e) => {
-            system::fatal(TITLE, &format!("The application window could not be created.\n\n{e}"));
+            system::fatal(TITLE, &lang::window_failed(&e.to_string()));
             std::process::exit(4);
         }
     };

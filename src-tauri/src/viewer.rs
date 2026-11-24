@@ -189,7 +189,7 @@ pub fn open_player(app: &AppHandle, tracks: Vec<media::Track>, start: usize, gam
         v.prune();
         p
     };
-    let title = format!("{game} \u{2014} Music");
+    let title = format!("{game} \u{2014} {}", crate::lang::tr("Music"));
     if let Some(w) = app.get_webview_window(PLAYER) {
         let _ = w.set_title(&title);
         w.emit_to(PLAYER, "gc-player-load", &playlist).map_err(|e| e.to_string())?;

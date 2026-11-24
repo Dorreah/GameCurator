@@ -31,6 +31,9 @@ pub struct AppState {
     pub viewers: Mutex<crate::viewer::Viewers>,
     /// Journal offers waiting to be shown after games ended (see `offer`).
     pub offers: Mutex<crate::offer::Offers>,
+    /// The lookup of game details (GOG.com, Databáze-her.cz, MobyGames) and
+    /// its results (see `details`).
+    pub details: Mutex<crate::details::DetailsState>,
 }
 
 /// Locks a mutex even if a previous holder panicked (the data is still valid

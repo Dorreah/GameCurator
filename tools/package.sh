@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Assembles the portable distribution: dist/GAME_CURATOR/ + dist/GameCurator-0.1.0-windows-portable.zip
+# Assembles the portable distribution: dist/GAME_CURATOR/ + dist/GameCurator-0.2.0-windows-portable.zip
 set -euo pipefail
 cd "$(dirname "$0")/.."
 EXE="${1:-target/x86_64-pc-windows-gnu/release/GameCurator.exe}"
@@ -28,5 +28,5 @@ for f in JBIG2 OPENJPEG QCMS PDFJS_JBIG2 PDFJS_OPENJPEG PDFJS_QCMS; do
   cp "$P/wasm/LICENSE_$f" "dist/GAME_CURATOR/Licenses/LICENSE-pdfjs-wasm-$f.txt"
 done
 # Data/, Games/ and .gamecurator-id are created by the app on first start.
-(cd dist && rm -f GameCurator-0.1.0-windows-portable.zip && zip -qr GameCurator-0.1.0-windows-portable.zip GAME_CURATOR)
+(cd dist && rm -f GameCurator-0.2.0-windows-portable.zip && zip -qr GameCurator-0.2.0-windows-portable.zip GAME_CURATOR)
 ls -la dist dist/GAME_CURATOR

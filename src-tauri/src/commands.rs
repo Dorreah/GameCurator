@@ -130,6 +130,7 @@ pub async fn save_config(state: State<'_, AppState>, config: AppConfig) -> CmdRe
         .filter(|p| !p.trim().is_empty())
         .map(|p| paths::to_portable(&state.layout.root, &paths::resolve(&state.layout.root, p.trim())));
     config::save(&state.layout.config_path(), &cfg).map_err(err)?;
+    crate::lang::set(&cfg.language);
     *lock(&state.config) = cfg.clone();
     cfg.scan_root = cfg.scan_root.map(|p| paths::display(&paths::resolve(&state.layout.root, &p)));
     Ok(cfg)
@@ -264,7 +265,7 @@ pub async fn pick_folder(
     if let Some(p) = e2e_pick() {
         return Ok(p.map(|p| paths::display(&p)));
     }
-    let mut dlg = window.app_handle().dialog().file().set_parent(&window).set_title(title.unwrap_or_else(|| "Choose a folder".into()));
+    let mut dlg = window.app_handle().dialog().file().set_parent(&window).set_title(title.unwrap_or_else(|| crate::lang::tr("Choose a folder").into()));
     let start_dir = start
         .filter(|s| !s.trim().is_empty())
         .map(|s| paths::resolve(&state.layout.root, s.trim()))
@@ -286,7 +287,7 @@ pub async fn pick_artwork(window: WebviewWindow, state: State<'_, AppState>) -> 
             .dialog()
             .file()
             .set_parent(&window)
-            .set_title("Choose artwork (JPG, PNG or WebP)")
+            .set_title(crate::lang::tr("Choose artwork (JPG, PNG or WebP)"))
             .add_filter("Images", images::ALLOWED_EXTENSIONS)
             .blocking_pick_file()
             .and_then(|p| p.into_path().ok()),
@@ -336,7 +337,7 @@ pub async fn locate_install(window: WebviewWindow, state: State<'_, AppState>, g
             .dialog()
             .file()
             .set_parent(&window)
-            .set_title("Choose the game's program (.exe)")
+            .set_title(crate::lang::tr("Choose the game's program (.exe)"))
             .add_filter("Programs", &["exe"])
             .blocking_pick_file()
             .and_then(|p| p.into_path().ok()),
@@ -533,7 +534,7 @@ pub async fn add_screenshots(
             .dialog()
             .file()
             .set_parent(&window)
-            .set_title("Add screenshots (PNG, JPG or WebP)")
+            .set_title(crate::lang::tr("Add screenshots (PNG, JPG or WebP)"))
             .add_filter("Images", images::ALLOWED_EXTENSIONS)
             .blocking_pick_files()
             .unwrap_or_default()
@@ -655,7 +656,7 @@ pub async fn pick_addition_file(window: WebviewWindow, state: State<'_, AppState
             .dialog()
             .file()
             .set_parent(&window)
-            .set_title("Add a file to the game (fix, patch, mod, bonus material...)")
+            .set_title(crate::lang::tr("Add a file to the game (fix, patch, mod, bonus material...)"))
             .blocking_pick_file()
             .and_then(|p| p.into_path().ok()),
     };

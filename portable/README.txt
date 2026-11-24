@@ -1,13 +1,27 @@
-GAME CURATOR 0.1
+GAME CURATOR 0.2
 Your games. Your archive. Your history.
 ==========================================================================
 
 Osobní offline archiv DRM-free her: instalační soubory, manuály, soundtracky
 a další obsah ke každé hře přehledně na jednom místě (např. offline
-instalátory z GOG.com). Žádná instalace, žádné účty, žádný internet.
+instalátory z GOG.com). Žádná instalace, žádné účty; na internet jde jen
+hledání údajů o hrách (GOG.com, Databáze-her.cz, MobyGames), když o něj
+sami požádáte.
 
 Archiv, ne backlog: program nesleduje, co je dohrané ani jak hry hodnotíte.
 Pomáhá vyznat se v souborech a zapsat si, co o hře víte a co vás na ní zaujalo.
+
+JAZYK: rozhraní je anglicky, nebo česky. Češtinu zapnete hned v uvítacím
+okně (English | Čeština) nebo kdykoli v Settings > Language. Přepne se
+okamžitě, bez restartu, a pamatuje se v Data\config.json.
+
+KDE MÁTE HRY (Archive Scanner / Skener archivu): vyberte HLAVNÍ složku
+sbírky (např. E:\Games nebo GOG_Installers), ne složku jedné hry. Každá
+hra by měla mít vlastní podsložku s instalátorem (setup_*.exe a .bin),
+patchi, manuály a bonusy. Hloubka hledání říká, kolik úrovní podsložek se
+prohledá (1 = Hry\Hra, 2 = Hry\Skupina\Hra, 3 = výchozí). Podrobnější
+nápověda je přímo na stránce skeneru; jednu hru přidáte i ručně
+tlačítkem Add Game / Přidat hru (u "Složka hry" je tlačítko "?").
 
 Ovládání je jen levé menu: Library, Gaming Journal, Archive Scanner, Settings
 a dole About. Zápisky deníku a "What I know about this game" se píší
@@ -17,6 +31,10 @@ zápis do deníku v malém okně, které je vždy navrchu, i když už jste
 přepnuli do jiného programu (lze vypnout zaškrtnutím "Don't show this
 again", zpět v Settings).
 Herní čas se nikdy nepočítá.
+
+Knihovna: hledání podle názvu, řazení (Sort) a vedle něj filtr s ikonou
+trychtýře - hry podle žánru, podle štítků nebo podle obojího. Víc žánrů
+jedné hry se píše oddělené čárkou ("Role-playing, Strategy").
 
 Profil hry: dělicí čáru mezi levou částí (hra, poznámky, deník) a Archive
 lze posunout myší; dvojklik ji vrátí na výchozí šířku.
@@ -35,6 +53,22 @@ jen odkáže tam, kde je.
 
 Tužka (✎) u souboru v Archive i v Additional files mu dá název v katalogu.
 Soubor na disku si nechá svůj název (ukáže se po najetí myší).
+
+Údaje o hrách z internetu: na stránce Archive Scanner (Skener archivu)
+zvolte zdroj a stiskněte "Fetch details" (Načíst údaje):
+  - GOG.com: oficiální název, anglický popis, žánr, tagy, vývojář,
+    vydavatel, rok a (hrám bez obalu) obal,
+  - Databáze-her.cz: ČESKÝ popis, žánr, vývojář a rok. Čte se veřejná
+    stránka hry, jejíž adresu program odvodí z názvu; nenalezenou hru
+    najdete vložením adresy její stránky do "Search again" (Hledat znovu).
+    Popisy jsou pod licencí CC BY-NC-ND 3.0 CZ, zdroj se zapíše pod popis.
+  - MobyGames: ANGLICKÝ popis, žánry, vývojář, vydavatel a rok. Potřebuje
+    váš vlastní API klíč z mobygames.com (Settings / Nastavení).
+Před uložením vše zkontrolujete; prázdná pole jsou zaškrtnutá, vaše
+vlastní údaje se přepíšou jen po zaškrtnutí ("Replace descriptions..."
+zaškrtne všechny nabízené popisy najednou). Je to jediná funkce, která
+jde na internet, a jen po stisku tlačítka (posílají se jen názvy her,
+u MobyGames i váš klíč).
 
 Manuály a soundtracky přímo v programu: Open u PDF otevře okno čtečky
 (listování, zoom, "Fit width"; PageUp/PageDown, Ctrl +/-, Ctrl+kolečko).
@@ -143,7 +177,7 @@ Ctrl+S           uložit (formulář hry, zápisek, "What I know about this game
 Esc              zavřít okno
 
 
-ZNÁMÁ OMEZENÍ VERZE 0.1
+ZNÁMÁ OMEZENÍ VERZE 0.2
 -----------------------
 Viz docs\KNOWN_LIMITATIONS.md ve zdrojovém kódu. Hlavně: jen Windows 10/11
 (64bit), artwork je jen obal (pozadí a logo nejsou), rozhraní je

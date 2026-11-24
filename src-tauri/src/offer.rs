@@ -53,7 +53,7 @@ pub fn offer(app: &AppHandle, event: GameEvent) {
         let _ = w.show();
         return;
     }
-    let builder = crate::viewer::window_builder(app, OFFER, "offer.html", "Back from the game \u{2014} Game Curator")
+    let builder = crate::viewer::window_builder(app, OFFER, "offer.html", crate::lang::tr("Back from the game \u{2014} Game Curator"))
         .inner_size(470.0, 262.0)
         .resizable(false)
         .maximizable(false)

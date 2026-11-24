@@ -37,13 +37,7 @@ pub fn prepare_webview_runtime(root: &Path) {
 
 /// Returns the WebView2 version or a user-friendly explanation.
 pub fn check_webview() -> Result<String, String> {
-    tauri::webview_version().map_err(|_| {
-        "Game Curator needs the Microsoft Edge WebView2 Runtime, which was not found on this computer.\n\n\
-         Windows 11 and up-to-date Windows 10 include it. Otherwise install the \"Evergreen\" WebView2 Runtime \
-         from Microsoft (search for \"WebView2 Runtime download\"), or copy a Fixed Version runtime into the \
-         folder \"WebView2Runtime\" next to GameCurator.exe.\n\nNo data was changed."
-            .to_string()
-    })
+    tauri::webview_version().map_err(|_| crate::lang::webview_missing())
 }
 
 #[cfg(windows)]
@@ -161,6 +155,26 @@ pub fn shell_open(path: &Path) -> Result<(), String> {
     {
         let _ = path;
         Err("Opening files is only supported on Windows.".to_string())
+    }
+}
+
+/// Opens a web page in the default browser (https only; the callers build
+/// the address themselves).
+pub fn open_url(url: &str) -> Result<(), String> {
+    if !url.starts_with("https://") || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err("Only https addresses can be opened.".to_string());
+    }
+    #[cfg(feature = "e2e")]
+    if let Some(r) = e2e_log("OPENURL", Path::new(url)) {
+        return r;
+    }
+    #[cfg(windows)]
+    {
+        shell_execute(Path::new(url), "", None)
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Opening web pages is only supported on Windows.".to_string())
     }
 }
 

@@ -41,6 +41,158 @@ INSTALLED = WORK / "installed.json"
 RESULTS = []
 METRICS = {}
 
+# ------------------------------------------------------------ a stand-in for GOG.com
+# Answers like the GOG catalog (catalog.gog.com/v1/catalog), the product APIs
+# (api.gog.com/v2/games, /products) and the image server, on 127.0.0.1. The
+# app is pointed at it with GC_E2E_GOG_BASE (e2e builds only).
+import http.server
+import io
+import threading
+import urllib.parse
+
+GOG_MOCK = {"down": False, "requests": []}
+
+
+def _gog_product(pid, title, date, devs, pubs, genres, tags, cover=None, kind="game"):
+    return {"id": pid, "slug": title.lower().replace(" ", "_"), "title": title, "releaseDate": date,
+            "developers": devs, "publishers": pubs, "genres": [{"name": g, "slug": g.lower()} for g in genres],
+            "tags": [{"name": t, "slug": t.lower()} for t in tags], "productType": kind,
+            "storeLink": f"https://www.gog.com/en/game/{pid}", "coverVertical": cover or "", "price": {"final": "$9.99"}}
+
+
+def _cover_png():
+    img = Image.new("RGB", (342, 482), (40, 30, 60))
+    for y in range(0, 482, 6):
+        for x in range(342):
+            img.putpixel((x, y), (200, 120, 60))
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
+class _GogHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, status, ctype, body):
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if GOG_MOCK["down"]:
+            # no answer at all, like a computer without internet
+            self.close_connection = True
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            return
+        GOG_MOCK["requests"].append({"path": self.path, "ua": self.headers.get("User-Agent", ""), "cookie": self.headers.get("Cookie")})
+        u = urllib.parse.urlparse(self.path)
+        q = urllib.parse.parse_qs(u.query)
+        base = GOG_MOCK["base"]
+        if u.path == "/v1/catalog":
+            query = q.get("query", [""])[0]
+            query = query[5:] if query.startswith("like:") else query
+            catalog = {
+                "system shock 2": [
+                    _gog_product("1001", "System Shock 2", "1999.08.11", ["Irrational Games", "Looking Glass Studios"], ["Nightdive Studios"],
+                                 ["Shooter", "Role-playing"], ["Sci-fi", "Horror", "Classic"]),
+                    _gog_product("1002", "System Shock: Enhanced Edition", "2015.09.22", ["Night Dive Studios"], ["Night Dive Studios"], ["Shooter"], ["Sci-fi"]),
+                ],
+                "baldurs gate iii": [
+                    _gog_product("1003", "Baldur's Gate 3", "2023.08.03", ["Larian Studios"], ["Larian Studios"], ["Role-playing", "Strategy"],
+                                 ["Fantasy", "Role-playing", "Story Rich", "Co-op"], cover=f"{base}/covers/bg3.png"),
+                ],
+                "disco elysium": [
+                    _gog_product("1004", "Disco Elysium - The Final Cut", "2019.10.15", ["ZA/UM"], ["ZA/UM"], ["Role-playing", "Adventure"],
+                                 ["Detective", "Story Rich"], cover=f"{base}/covers/de.png"),
+                ],
+            }.get(query, [])
+            return self._send(200, "application/json", json.dumps({"pages": 1, "productCount": len(catalog), "products": catalog}).encode())
+        if u.path.startswith("/v2/games/"):
+            descriptions = {
+                "1001": "<p>The year is 2114. You wake up on the <b>Von Braun</b>.</p>",
+                "1002": "<p>The original System Shock.</p>",
+                "1003": "<p><b>Gather your party</b> and return to the Forgotten Realms.</p><ul><li>Play solo</li><li>Co-op</li></ul>",
+            }
+            pid = u.path.rsplit("/", 1)[-1]
+            if pid in descriptions:
+                return self._send(200, "application/json", json.dumps({"description": descriptions[pid], "_embedded": {}}).encode())
+            return self._send(404, "text/plain", b"not found")
+        if u.path.startswith("/products/"):
+            pid = u.path.rsplit("/", 1)[-1]
+            if pid == "1004":
+                body = {"title": "Disco Elysium", "description": {"lead": "", "full": "<p>Detective RPG with a <i>unique</i> dialogue system.</p>", "whats_cool_about_it": ""}}
+                return self._send(200, "application/json", json.dumps(body).encode())
+            return self._send(404, "text/plain", b"not found")
+        if u.path.startswith("/covers/"):
+            return self._send(200, "image/png", GOG_MOCK.setdefault("png", _cover_png()))
+        # Databáze-her.cz: public game pages /hry/<name>/ (GC_E2E_DBHER_BASE)
+        if u.path.startswith("/hry/"):
+            page = DBHER_PAGES.get(u.path)
+            if page:
+                return self._send(200, "text/html; charset=utf-8", page.encode("utf-8"))
+            return self._send(404, "text/html; charset=utf-8", "<html><h1>Stránka nenalezena</h1></html>".encode("utf-8"))
+        # MobyGames API (GC_E2E_MOBY_BASE = base + /moby/v1)
+        if u.path.startswith("/moby/v1/"):
+            GOG_MOCK.setdefault("moby_times", []).append(time.monotonic())
+            if q.get("api_key", [""])[0] != "E2E-KEY":
+                return self._send(401, "application/json", b'{"code":401,"error":"Unauthorized"}')
+            if u.path == "/moby/v1/games":
+                games = [MOBY_SS2] if "system shock 2" in q.get("title", [""])[0].lower() else []
+                return self._send(200, "application/json", json.dumps({"games": games}).encode())
+            if u.path == "/moby/v1/games/491/platforms/3":
+                return self._send(200, "application/json", json.dumps({"game_id": 491, "platform_id": 3, "releases": [{"companies": [
+                    {"company_id": 1, "company_name": "Irrational Games", "role": "Developed by"},
+                    {"company_id": 3, "company_name": "Looking Glass Studios", "role": "Developed by"},
+                    {"company_id": 2, "company_name": "Electronic Arts", "role": "Published by"}], "release_date": "1999-08-11"}]}).encode())
+            return self._send(404, "application/json", b'{"code":404}')
+        return self._send(404, "text/plain", b"not found")
+
+
+def _dbher_page(title, alt, genres, devs, date, kinds, desc):
+    """A game page shaped like www.databaze-her.cz/hry/<name>/ (shortened)."""
+    ld = {"@context": "http://schema.org/", "@type": "VideoGame", "name": title, "genre": genres,
+          "author": [{"@type": "Organization", "name": d} for d in devs]}
+    lines = "".join(f'<div><a href="/hry/?zanr=p1p">{g}</a> &gt; <a href="/hry/?zanr=s1s">{k}</a></div>' for g, k in zip(genres, kinds))
+    return f"""<!DOCTYPE html><html lang="cs"><head><title>{title} – Databáze-her.cz</title></head><body>
+<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>
+<header id="game-header"><div class="game-title"><h1>{title}</h1>{f"<h4>{alt}</h4>" if alt else ""}</div>
+<div class="game-developers">{"".join(f'<span><a href="/vyvojari/x/">{d}</a></span>' for d in devs)}</div>
+<div class="game-dates"><div><div class="game-date"><div class="platforms -inline"><a class="platform" data-system-name="pc">PC</a></div><div>{date}</div></div></div></div></header>
+<dl class="game-genres details"><dt>Žánr</dt><dd>{lines}</dd></dl>
+<div class="grid -cols-3"><div><dl class="details"><dt>Rozsah</dt><dd>samostatná hra</dd></dl></div></div>
+<div class="game-description article-text">{desc}</div></body></html>"""
+
+
+DBHER_PAGES = {
+    "/hry/system-shock-2/": _dbher_page("System Shock 2", "", ["akce", "RPG"], ["Irrational Games", "Looking Glass Studios"], "11.08.1999",
+                                        ["1st person akce", "nezařazeno"],
+                                        "Hráč je odkázán téměř výhradně sám na sebe a musí přežít na palubách lodi <i>Von Braun</i>.\r<br>\r<br>Kombinuje FPS a RPG."),
+    "/hry/baldurs-gate-iii/": _dbher_page("Baldur's Gate III", "Baldur's Gate 3", ["RPG"], ["Larian Studios"], "03.08.2023", ["tahová RPG"],
+                                          "Třetí díl legendární série."),
+    "/hry/disco-elysium-the-final-cut/": _dbher_page("Disco Elysium: The Final Cut", "", ["RPG"], ["ZA/UM"], "30.03.2021", ["nezařazeno"],
+                                                     "Detektivní RPG s jedinečným systémem rozhovorů."),
+}
+
+MOBY_SS2 = {"game_id": 491, "title": "System Shock 2", "moby_url": "https://www.mobygames.com/game/491/system-shock-2/",
+            "alternate_titles": [], "description": "<p>The year is 2114. You wake up aboard the <i>Von Braun</i>.</p>",
+            "genres": [{"genre_category": "Basic Genres", "genre_category_id": 1, "genre_id": 1, "genre_name": "Action"},
+                       {"genre_category": "Perspective", "genre_category_id": 2, "genre_id": 7, "genre_name": "1st-person"}],
+            "platforms": [{"first_release_date": "1999-08", "platform_id": 3, "platform_name": "Windows"}]}
+
+
+def start_gog_mock():
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _GogHandler)
+    srv.daemon_threads = True
+    GOG_MOCK["base"] = f"http://127.0.0.1:{srv.server_address[1]}"
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return GOG_MOCK["base"]
+
 
 # ------------------------------------------------------------------ fixtures
 
@@ -177,6 +329,9 @@ class App:
             # leaves a program from the installation folder running for 2 s
             GC_E2E_GAME_CMD=str(WORK / "C" / "GOG Games" / "Disco Elysium" / "play.sh"),
             GC_E2E_FAST_SESSIONS="1",
+            GC_E2E_GOG_BASE=GOG_MOCK.get("base") or start_gog_mock(),
+            GC_E2E_DBHER_BASE=GOG_MOCK["base"],
+            GC_E2E_MOBY_BASE=GOG_MOCK["base"] + "/moby/v1",
             DISPLAY=":99",
             WEBKIT_DISABLE_COMPOSITING_MODE="1",
         )
@@ -463,6 +618,8 @@ def run():
                                          "deep focus", "analysis", "noticing the small details"]), welcome[:300])
         check("welcome window offers “Don't show this again”", app.count("#wl-hide[type=checkbox]") == 1 and "Don't show this again" in app.text(".overlay"))
         check("the wizard waits until the welcome window is closed", app.count(".wizard") == 0)
+        check("welcome window lets you choose the language (English | Čeština), English first",
+              app.count("input[name=wl-lang]") == 2 and app.js("return document.querySelector('input[name=wl-lang]:checked').value") == "en")
         app.shot("00-welcome")
         app.dismiss_welcome(dont_show=True)
         app.until(lambda: json.loads((root_d / "Data" / "config.json").read_text()).get("showWelcome") is False, msg="welcome off")
@@ -678,6 +835,8 @@ def run():
         # edit + tag + notes
         app.click("#pf-edit")
         app.visible("#gf-desc")
+        check("the Genre field offers no suggestions from other games (no list, no autofill)",
+              app.js("const g = document.getElementById('gf-genre'); return g.getAttribute('list') === null && g.getAttribute('autocomplete') === 'off' && !document.querySelector('.overlay datalist')"))
         app.type("#gf-desc", "Edited: the Many are waiting.")
         app.type("#gf-tags", "classic, immersive sim, favourite")
         app.click("#gf-save")
@@ -743,8 +902,10 @@ def run():
         app.until(lambda: app.count("#sc-results .thumb-mini") == 1, msg="artwork in scanner")
         app.click("#sc-import")
         app.visible(".overlay [data-ok]")
-        check("import report shows 3 imported", "3 game(s) imported" in app.text(".overlay .dlg-text"), app.text(".overlay .dlg-text"))
+        check("import report shows 3 imported", "3 games imported" in app.text(".overlay .dlg-text"), app.text(".overlay .dlg-text"))
         app.click(".overlay [data-ok]")
+        check("after the import: an offer to fetch the new games' details from GOG.com",
+              "3 games were just imported" in app.text("#gog-imported") and app.count("#gog-start-imported") == 1, app.text("#gog-imported"))
         app.click("#sc-start")
         time.sleep(1.0)
         app.until(lambda: app.count("#sc-results tbody tr") == 4 and "In catalog" in app.text("#sc-results"), timeout=30)
@@ -768,7 +929,7 @@ def run():
         check("a running scan can be cancelled", "cancelled" in app.text("#sc-results").lower(), app.text("#sc-results")[:200])
         app.shot("08b-scan-cancelled")
 
-        # ---- library: search and sort only, no filters
+        # ---- library: search and sort (the genre/tag filter is tested later, when games have genres)
         app.click("#nav-library")
         app.until(lambda: app.count(".card") == 4)
         app.type("#lib-search", "disco")
@@ -779,8 +940,8 @@ def run():
         app.css("#lib-search").send_keys(" ")
         app.css("#lib-search").send_keys(Keys.BACKSPACE)
         app.until(lambda: app.count(".card") == 4)
-        check("no filters anywhere (status, genre, tag, availability)",
-              app.count("[data-filter], [data-tag], #sidebar .side-list, .filters") == 0
+        check("no play-status or availability filters (only the genre and tag filter next to Sort)",
+              app.count("[data-filter], [data-tag], #sidebar .side-list, .filters") == 0 and app.count("#lib-filter") == 1
               and not any(w in app.text("body").lower() for w in ["not played", "completed", "on hold", "favorite"]),
               app.text(".sidebar"))
         check("cards show year and size on disk, no status", "1999 · 22 KB" in app.text(".card:last-child") or "1999" in app.text(".card:last-child") and "KB" in app.text(".card:last-child"), app.text(".card:last-child"))
@@ -1153,6 +1314,268 @@ def run():
         check("game removed from catalog, original folder kept",
               (gog / "Gothic (2001)" / "setup_gothic_1.0.2.exe").is_file() and (gog / "Gothic (2001)" / "Manual.pdf").is_file())
 
+        # ---- game details from GOG.com (answered by the stand-in above)
+        app.click("#nav-scanner")
+        app.visible("#gog-box")
+        scope_text = lambda: app.js("return [...document.querySelectorAll('#gog-scope option')].map(o => o.textContent).join(' | ')")
+        app.until(lambda: "All games (3)" in scope_text(), msg="gog counts")
+        check("Archive Scanner: 'Fetch details from GOG.com' (the default source), for games with missing details or all games, explained as the only online feature",
+              "Games with missing details (2)" in scope_text() and app.text("#gog-start") == "Fetch details from GOG.com"
+              and "only things in Game Curator that go online" in app.text("#gog-box")
+              and app.js("return document.querySelector('input[name=gog-source]:checked').value") == "gog", scope_text())
+        bg3_dir = gog / "Baldurs_Gate_3"
+        bg3_files = sorted((str(p), p.stat().st_size) for p in bg3_dir.rglob("*") if p.is_file()) if bg3_dir.exists() else None
+        db0 = sqlite3.connect(root_d / "Data" / "library.db")
+        ss_before = db0.execute("select description, genre, developer, publisher, release_year, artwork_path from games where title like 'System Shock%'").fetchone()
+        ss_tags_before = sorted(r[0] for r in db0.execute("select t.name from tags t join game_tags gt on gt.tag_id=t.id join games g on g.id=gt.game_id where g.title like 'System Shock%'"))
+        db0.close()
+        GOG_MOCK["requests"].clear()
+        app.js("const s=document.getElementById('gog-scope'); s.value='all'; s.dispatchEvent(new Event('change',{bubbles:true}))")
+        app.click("#gog-start")
+        app.until(lambda: app.count(".gog-item") == 3, timeout=40, msg="gog results")
+        gitem = "[...document.querySelectorAll('.gog-item')].find(i => i.querySelector('.gog-title').textContent.startsWith(arguments[0]))"
+        badge = lambda t: app.js(f"return {gitem}.querySelector('.badge').textContent", t)
+        fields = lambda t, on=None: app.js(f"return [...{gitem}.querySelectorAll('[data-gog-field]')].filter(c => arguments[1] === null || c.checked === arguments[1]).map(c => c.value)", t, on)
+        check("results: System Shock 2 found, Disco Elysium to check (GOG has 'The Final Cut'), Baldurs Gate 3 not found",
+              (badge("System Shock"), badge("Disco"), badge("Baldurs")) == ("Found", "Check the match", "Not found"),
+              f"{badge('System Shock')}/{badge('Disco')}/{badge('Baldurs')}")
+        check("a game whose details you filled in yourself: GOG's differ, but nothing of yours is ticked",
+              set(fields("System Shock")) == {"description", "genre", "tags", "developer", "publisher"} and fields("System Shock", True) == []
+              and "+ Sci-fi, Horror" in app.js(f"return {gitem}.innerText", "System Shock"), str(fields("System Shock")))
+        check("…and a match to check is not saved unless ticked", app.js(f"return {gitem}.querySelector('[data-gog-inc]').checked", "Disco") is False
+              and "Save details for 0 games" in app.text("#gog-save"))
+        # another product found for the same title
+        app.js(f"const s = {gitem}.querySelector('[data-gog-choose]'); s.value = '1002'; s.dispatchEvent(new Event('change', {{bubbles: true}}))", "System Shock")
+        app.until(lambda: "System Shock: Enhanced Edition" in app.js(f"return {gitem}.querySelector('.gog-match').textContent", "System Shock"), msg="other product")
+        check("another product found can be chosen; its details are offered instead (2015, kept unless ticked)",
+              "year" in fields("System Shock") and "2015" in app.js(f"return {gitem}.innerText", "System Shock") and fields("System Shock", True) == [])
+        app.js(f"const s = {gitem}.querySelector('[data-gog-choose]'); s.value = '1001'; s.dispatchEvent(new Event('change', {{bubbles: true}}))", "System Shock")
+        app.until(lambda: "year" not in fields("System Shock"), msg="back to SS2")
+        # not found: search again with other words
+        app.js(f"{gitem}.querySelector('[data-gog-q]').value = \"Baldur's Gate III\"", "Baldurs")
+        app.js(f"{gitem}.querySelector('[data-gog-search]').click()", "Baldurs")
+        app.until(lambda: badge("Baldurs") == "Found", msg="search again")
+        check("not found -> 'Search again' with other words finds Baldur's Gate 3",
+              "Baldur's Gate 3" in app.js(f"return {gitem}.querySelector('.gog-match').textContent", "Baldurs"))
+        check("empty fields ticked, the title the user has (Baldurs) only if ticked; the cover offered with a preview",
+              set(fields("Baldurs", True)) == {"description", "genre", "tags", "developer", "publisher", "year", "cover"}
+              and fields("Baldurs", False) == ["title"]
+              and app.js(f"return ({gitem}.querySelector('.gog-cover') || {{}}).src || ''", "Baldurs").startswith("data:image/png;base64,"),
+              str(fields("Baldurs")))
+        app.js(f"{gitem}.querySelector('[data-gog-inc]').click()", "Disco")
+        check("description from the older GOG product API when the newer has none; Disco's own year and cover stay",
+              "Detective RPG with a unique dialogue system." in app.js(f"return {gitem}.innerText", "Disco")
+              and "year" not in fields("Disco") and "cover" not in fields("Disco"))
+        app.until(lambda: "Save details for 2 games" in app.text("#gog-save"), msg="save count")
+        app.shot("08c-gog-review")
+        app.click("#gog-save")
+        app.until(lambda: app.count(".gog-item") == 1, msg="saved")
+        db = sqlite3.connect(root_d / "Data" / "library.db")
+        row = lambda t: db.execute("select title, description, genre, developer, publisher, release_year, artwork_path from games where title like ?", (t + "%",)).fetchone()
+        tags_of = lambda t: sorted(r[0] for r in db.execute("select t.name from tags t join game_tags gt on gt.tag_id=t.id join games g on g.id=gt.game_id where g.title like ?", (t + "%",)))
+        bg = row("Baldurs")
+        check("saved for Baldurs Gate 3: description, genre, developer, publisher, year, tags and a cover; its own title kept",
+              bg[0] == "Baldurs Gate 3" and bg[1].startswith("Gather your party and return to the Forgotten Realms.\n\n\u2022 Play solo")
+              and bg[2:6] == ("Role-playing, Strategy", "Larian Studios", "Larian Studios", 2023)
+              and bg[6] and (root_d / bg[6]).is_file() and tags_of("Baldurs") == ["Co-op", "Fantasy", "Story Rich"], str(bg[:6]))
+        de = row("Disco")
+        check("saved for Disco Elysium; its year and its own cover kept", de[2] == "Role-playing, Adventure" and de[5] == 2019 and de[1].startswith("Detective RPG")
+              and de[6] and "Covers" in de[6], str(de[:6]))
+        ss = row("System Shock")
+        check("System Shock 2 unchanged (nothing ticked)", ss[1:] == ss_before and tags_of("System Shock") == ss_tags_before and ss[2] == "RPG", str(ss[:6]))
+        if bg3_files is not None:
+            check("the games' own files are untouched", sorted((str(p), p.stat().st_size) for p in bg3_dir.rglob("*") if p.is_file()) == bg3_files)
+        reqs = GOG_MOCK["requests"]
+        check("GOG.com was asked only for the titles; Game Curator says who it is and sends no cookies",
+              any("like%3Asystem+shock+2" in r["path"] for r in reqs) and any("like%3Abaldurs+gate+iii" in r["path"] for r in reqs)
+              and all(r["ua"].startswith("GameCurator/") and not r["cookie"] for r in reqs), str([r["path"] for r in reqs][:3]))
+        app.click("#nav-library")
+        app.until(lambda: app.count(".card") == 3)
+        check("the cover from GOG.com shows in the library", app.js("const c=[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('Baldurs')); const i=c&&c.querySelector('img'); return !!i && i.complete && i.naturalWidth > 0"))
+        app.js("[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('Baldurs')).click()")
+        app.visible("#pf-content")
+        check("…and the description in the game profile", "Gather your party" in app.text("#main"))
+        app.shot("08d-gog-details-saved")
+        # no internet: a clear message, nothing changes
+        app.click("#nav-scanner")
+        app.visible("#gog-box")
+        app.click("#gog-close")
+        app.until(lambda: app.count(".gog-item") == 0, msg="results closed")
+        GOG_MOCK["down"] = True
+        app.js("const s=document.getElementById('gog-scope'); s.value='all'; s.dispatchEvent(new Event('change',{bubbles:true}))")
+        app.click("#gog-start")
+        app.until(lambda: "could not be reached" in app.text("#gog-error"), timeout=40, msg="offline")
+        GOG_MOCK["down"] = False
+        check("without internet: 'GOG.com could not be reached', nothing saved", app.count(".gog-item") == 0 and row("Baldurs")[2] == "Role-playing, Strategy")
+        db.close()
+
+        # ---- library filter by genre and tags (the funnel next to Sort)
+        app.click("#nav-library")
+        app.until(lambda: app.count(".card") == 3)
+        app.click("#lib-filter")
+        app.visible("#lib-filter-pop")
+        flist = lambda which: app.js(f"return [...document.querySelectorAll('#lib-filter-{which} label')].map(l => l.querySelector('.f-name').textContent + ' ' + l.querySelector('.f-count').textContent)")
+        check("Filter (funnel next to Sort): every genre of a comma list on its own, and the tags, with counts",
+              flist("genres") == ["Adventure 1", "Role-playing 2", "RPG 1", "Strategy 1"] and "Story Rich 2" in flist("tags") and "Co-op 1" in flist("tags"),
+              f"{flist('genres')} {flist('tags')}")
+        tick = lambda kind, name: app.js(f"[...document.querySelectorAll('[data-f{kind}]')].find(c => c.dataset.f{kind} === arguments[0]).click()", name)
+        cards = lambda: sorted(app.js("return [...document.querySelectorAll('.card .t')].map(t => t.textContent)"))
+        tick("genre", "Role-playing")
+        app.until(lambda: app.count(".card") == 2, msg="genre filter")
+        check("filter by a genre: the games that have it among their genres",
+              cards() == ["Baldurs Gate 3", "Disco Elysium"] and "2 of 3" in app.text("#lib-count") and app.js("return document.getElementById('lib-filter').textContent.trim()") == "Filter (1)", str(cards()))
+        tick("tag", "Co-op")
+        app.until(lambda: app.count(".card") == 1, msg="tag filter")
+        check("genre and tag together: games with both", cards() == ["Baldurs Gate 3"] and "Role-playing" in app.text("#lib-filter-bar") and "Co-op" in app.text("#lib-filter-bar"))
+        tick("genre", "RPG")
+        app.js("[...document.querySelectorAll('#lib-filter-bar [data-unfilter]')].find(b => b.dataset.name === 'Co-op').click()")
+        app.until(lambda: app.count(".card") == 3, msg="any of the genres")
+        check("several genres: games with any of them; a filter removed from the bar", cards() == ["Baldurs Gate 3", "Disco Elysium", "System Shock 2"]
+              and "Co-op" not in app.text("#lib-filter-bar"))
+        tick("genre", "RPG")
+        tick("tag", "Story Rich")
+        app.until(lambda: app.count(".card") == 2, msg="story rich")
+        app.shot("09b-library-filter")
+        app.js("document.getElementById('lib-scroll').dispatchEvent(new MouseEvent('mousedown', {bubbles: true}))")
+        app.until(lambda: not app.css("#lib-filter-pop").is_displayed(), msg="filter closes")
+        app.js("document.querySelector('.card').click()")
+        app.visible("#pf-content")
+        app.click("#nav-library")
+        app.until(lambda: app.count(".card") == 2, msg="filter kept")
+        check("the filter closes when clicking elsewhere and stays while browsing", "2 of 3" in app.text("#lib-count"))
+        app.click("[data-mode='catalog']")
+        app.until(lambda: app.count("table.list tbody tr") == 2, msg="catalog filtered")
+        check("the Catalog View is filtered too", True)
+        app.click("[data-mode='grid']")
+        app.click("#lib-filter")
+        app.click("#lib-filter-clear")
+        app.until(lambda: app.count(".card") == 3, msg="clear in the filter")
+        tick("genre", "Adventure")
+        tick("tag", "Co-op")
+        app.until(lambda: "No game matches the filter" in app.text("#lib-scroll"), msg="nothing matches")
+        app.js("document.querySelector('#lib-scroll [data-act=\"clearfilter\"]').click()")
+        app.until(lambda: app.count(".card") == 3, msg="cleared")
+        check("nothing matches: a clear message and 'Clear filters' shows all games again",
+              not app.css("#lib-filter-bar").is_displayed() and app.text("#lib-count") == "3" and app.js("return document.getElementById('lib-filter').textContent.trim()") == "Filter")
+        app.js("document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}))")
+
+        # ---- Czech descriptions from Databáze-her.cz, English ones from MobyGames
+        app.click("#nav-scanner")
+        app.visible("#gog-box")
+        srcs = app.js("return [...document.querySelectorAll('#gog-source .src-option')].map(o => o.querySelector('input').value + ':' + o.querySelector('.src-name').textContent)")
+        check("three sources of game details: GOG.com, Databáze-her.cz (Czech descriptions), MobyGames (English descriptions)",
+              srcs == ["gog:GOG.com", "dbher:Databáze-her.cz", "moby:MobyGames"] and "Czech description" in app.text("#gog-source")
+              and "English description" in app.text("#gog-source") and "API key: not set" in app.text("#gog-source"), str(srcs))
+        app.js("document.querySelector('input[name=gog-source][value=dbher]').click()")
+        app.until(lambda: app.text("#gog-start") == "Fetch details from Databáze-her.cz", msg="dbher chosen")
+        cfgp = root_d / "Data" / "config.json"
+        app.until(lambda: json.loads(cfgp.read_text()).get("detailsSource") == "dbher", msg="source saved")
+        check("choosing Databáze-her.cz: the button says so, the choice is remembered, the licence and what is read are explained",
+              "CC BY-NC-ND 3.0 CZ" in app.text("#gog-sent") and "search is not used" in app.text("#gog-sent"))
+        GOG_MOCK["requests"].clear()
+        app.js("const s=document.getElementById('gog-scope'); s.value='all'; s.dispatchEvent(new Event('change',{bubbles:true}))")
+        app.click("#gog-start")
+        app.until(lambda: app.count(".gog-item") == 3, timeout=60, msg="dbher results")
+        check("Databáze-her.cz: System Shock 2 found, Baldurs Gate 3 found under its Roman numeral, Disco Elysium not found",
+              (badge("System Shock"), badge("Baldurs"), badge("Disco")) == ("Found", "Found", "Not found")
+              and "Baldur's Gate III" in app.js(f"return {gitem}.querySelector('.gog-match').textContent", "Baldurs"),
+              f"{badge('System Shock')}/{badge('Baldurs')}/{badge('Disco')}")
+        dh_paths = [r["path"] for r in GOG_MOCK["requests"]]
+        check("only the public game pages are read (addresses made from the titles), never the site's search; no cookies",
+              all(p.startswith("/hry/") for p in dh_paths) and "/hry/baldurs-gate-3/" in dh_paths and "/hry/baldurs-gate-iii/" in dh_paths
+              and not any("hledani" in p for p in dh_paths) and all(r["ua"].startswith("GameCurator/") and not r["cookie"] for r in GOG_MOCK["requests"]), str(dh_paths))
+        ss_desc = lambda: app.js(f"return [...{gitem}.querySelectorAll('[data-gog-field=\"' + {gitem}.dataset.gid + '\"]')].find(c => c.value === 'description')?.checked", "System Shock")
+        check("the user's own description is kept unless ticked", ss_desc() is False and "Hráč je odkázán" in app.js(f"return {gitem}.textContent", "System Shock"))
+        app.click("#gog-replace")
+        app.until(lambda: ss_desc() is True, msg="replace descriptions")
+        check("'Replace descriptions that are already filled in' ticks the Czech descriptions of all games", ss_desc() is True
+              and app.js(f"return [...{gitem}.querySelectorAll('[data-gog-field]')].find(c => c.value === 'description').checked", "Baldurs") is True)
+        app.js(f"{gitem}.querySelector('[data-gog-page]').click()", "System Shock")
+        app.until(lambda: any(a.startswith("OPENURL") for a in actions()), msg="page opened")
+        check("'Page ↗' opens the game page of the source in the browser", "OPENURL https://www.databaze-her.cz/hry/system-shock-2/" in actions(), str(actions()[-2:]))
+        app.js(f"{gitem}.querySelector('[data-gog-site]').click()", "Disco")
+        app.until(lambda: sum(a.startswith("OPENURL") for a in actions()) == 2, msg="search opened")
+        check("not found: 'Search on Databáze-her.cz ↗' opens the site's search for the title in the browser",
+              "OPENURL https://www.databaze-her.cz/hledani/?fraze=Disco+Elysium" in actions(), str(actions()[-2:]))
+        app.js(f"{gitem}.querySelector('[data-gog-q]').value = 'https://www.databaze-her.cz/hry/disco-elysium-the-final-cut/'", "Disco")
+        app.js(f"{gitem}.querySelector('[data-gog-search]').click()", "Disco")
+        app.until(lambda: badge("Disco") == "Found", msg="pasted address")
+        check("…and the address of the game page pasted into 'Search again' is read directly",
+              "Disco Elysium: The Final Cut" in app.js(f"return {gitem}.querySelector('.gog-match').textContent", "Disco"))
+        app.js(f"{gitem}.querySelector('[data-gog-inc]').click()", "Baldurs")
+        app.until(lambda: "Save details for 2 games" in app.text("#gog-save"), msg="dbher save count")
+        app.js("document.querySelector('.gog-item').scrollIntoView({block: 'start'})")
+        app.shot("08e-dbher-review-cs-descriptions")
+        app.click("#gog-save")
+        app.until(lambda: app.count(".gog-item") == 1, msg="dbher saved")
+        db = sqlite3.connect(root_d / "Data" / "library.db")
+        ss = row("System Shock")
+        de = row("Disco")
+        check("saved: the Czech description with its source and licence written under it",
+              ss[1].startswith("Hráč je odkázán téměř výhradně sám na sebe a musí přežít na palubách lodi Von Braun.\n\nKombinuje FPS a RPG.")
+              and ss[1].endswith("\u2014 Zdroj: Databáze-her.cz, https://www.databaze-her.cz/hry/system-shock-2/ (licence CC BY-NC-ND 3.0 CZ)")
+              and de[1].startswith("Detektivní RPG") and "disco-elysium-the-final-cut" in de[1], ss[1][-120:])
+        check("…and nothing else of the user's changed (genre, year, cover)", ss[2] == "RPG" and de[2] == "Role-playing, Adventure" and de[5] == 2019)
+        db.close()
+        app.click("#gog-close")
+        app.click("#gog-replace")
+        app.until(lambda: app.js("return document.getElementById('gog-replace').checked") is False, msg="replace off")
+        # MobyGames: needs the user's API key
+        app.js("document.querySelector('input[name=gog-source][value=moby]').click()")
+        app.until(lambda: app.text("#gog-start") == "Fetch details from MobyGames", msg="moby chosen")
+        app.click("#gog-start")
+        app.visible(".overlay .dlg-text")
+        check("MobyGames without a key: 'Enter your MobyGames API key in Settings first.', nothing is sent",
+              "Enter your MobyGames API key in Settings first." in app.text(".overlay .dlg-text") and not GOG_MOCK.get("moby_times"), app.text(".overlay .dlg-text"))
+        app.close_modals()
+        app.click("[data-act='moby-key']")
+        app.visible("#st-moby-key")
+        check("'add it in Settings' leads to the key field (hidden like a password)",
+              app.js("return document.activeElement && document.activeElement.id") == "st-moby-key" and app.css("#st-moby-key").get_attribute("type") == "password")
+        app.type("#st-moby-key", "WRONG")
+        app.click("#st-moby-save")
+        app.until(lambda: json.loads(cfgp.read_text()).get("mobygamesKey") == "WRONG", msg="key saved")
+        app.click("#nav-scanner")
+        app.visible("#gog-box")
+        app.until(lambda: "API key: set" in app.text("#gog-source"), msg="key set")
+        app.click("#gog-start")
+        app.until(lambda: "did not accept the API key" in app.text("#gog-error"), timeout=30, msg="wrong key")
+        check("a wrong key: 'MobyGames did not accept the API key' (the key itself is never shown)",
+              "WRONG" not in app.text("#gog-error") and app.count(".gog-item") == 0, app.text("#gog-error"))
+        app.click("#nav-settings")
+        app.type("#st-moby-key", "E2E-KEY")
+        app.js("document.getElementById('st-moby-key').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))")
+        app.until(lambda: json.loads(cfgp.read_text()).get("mobygamesKey") == "E2E-KEY", msg="key saved 2")
+        app.click("#nav-scanner")
+        app.visible("#gog-box")
+        GOG_MOCK["moby_times"] = []
+        GOG_MOCK["requests"].clear()
+        app.js("const s=document.getElementById('gog-scope'); s.value='all'; s.dispatchEvent(new Event('change',{bubbles:true}))")
+        app.click("#gog-start")
+        app.until(lambda: app.count(".gog-item") == 3, timeout=60, msg="moby results")
+        check("MobyGames: System Shock 2 found with its developers from the release; the others not found; nothing of the user's ticked",
+              (badge("System Shock"), badge("Baldurs"), badge("Disco")) == ("Found", "Not found", "Not found")
+              and "Looking Glass Studios" in app.js(f"return {gitem}.textContent", "System Shock") and fields("System Shock", True) == [],
+              f"{badge('System Shock')}/{badge('Baldurs')}/{badge('Disco')} {fields('System Shock')}")
+        times = GOG_MOCK["moby_times"]
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        mreqs = [r["path"] for r in GOG_MOCK["requests"]]
+        check("the MobyGames API is asked at most once a second, with the key, only at api.mobygames.com's stand-in",
+              len(times) >= 4 and min(gaps) >= 1.0 and all(p.startswith("/moby/v1/") and "api_key=E2E-KEY" in p for p in mreqs), f"{gaps} {mreqs[:2]}")
+        app.js(f"[...{gitem}.querySelectorAll('[data-gog-field]')].find(c => c.value === 'description').click()", "System Shock")
+        app.until(lambda: "Save details for 1 game" in app.text("#gog-save"), msg="moby save count")
+        app.click("#gog-save")
+        app.until(lambda: app.count(".gog-item") == 2, msg="moby saved")
+        db = sqlite3.connect(root_d / "Data" / "library.db")
+        ss = row("System Shock")
+        check("saved: the English description from MobyGames with its source",
+              ss[1].startswith("The year is 2114. You wake up aboard the Von Braun.") and ss[1].endswith("Source: MobyGames, https://www.mobygames.com/game/491/system-shock-2/")
+              and ss[3] == "Irrational Games", ss[1][-80:])
+        db.close()
+        app.click("#gog-close")
+        app.js("document.querySelector('input[name=gog-source][value=gog]').click()")
+        app.until(lambda: app.text("#gog-start") == "Fetch details from GOG.com", msg="back to gog")
+
         # ---- settings: backup
         app.click("#nav-settings")
         app.click("#st-backup")
@@ -1279,7 +1702,7 @@ def run():
         app.new_window([main_win])
         app.until(lambda: app.count(".pl-track.on") == 1, msg="player before closing")
         app.closed = True
-        wm_close("^Game Curator 0.1$")
+        wm_close("^Game Curator 0.2$")
         gone = False
         for _ in range(50):
             if subprocess.run(["pgrep", "-x", BIN.name[:15]], capture_output=True).returncode != 0:
@@ -1320,7 +1743,7 @@ def run():
         METRICS["idle_rss_3_games_app_mb"] = round(o / 1024, 1)
         METRICS["idle_rss_3_games_total_mb"] = round(t_ / 1024, 1)
         check("all games available after moving the archive", app.count(".card.offline") == 0)
-        app.until(lambda: app.js("return [...document.querySelectorAll('.card img')].every(i=>i.complete&&i.naturalWidth>0) && document.querySelectorAll('.card img').length==2"), msg="artworks")
+        app.until(lambda: app.js("return [...document.querySelectorAll('.card img')].every(i=>i.complete&&i.naturalWidth>0) && document.querySelectorAll('.card img').length==3"), msg="artworks")  # Baldurs Gate 3 got its cover from GOG.com in session 1
         check("artworks load from the moved archive", True)
         app.js("[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('System Shock')).click()")
         app.until(lambda: "Medical deck (edited)" in app.text("#pf-journal"))
@@ -1385,6 +1808,121 @@ def run():
     check("integrity check ok", db.execute("pragma integrity_check").fetchone()[0] == "ok")
     db.close()
 
+    # -------------------------------------------------- session 3b: Czech interface
+    section("Session 3b - Czech interface and help for locating game folders")
+    repo = Path(__file__).resolve().parents[2]
+    rc = subprocess.run([sys.executable, str(repo / "tools" / "check_i18n.py")], capture_output=True, text=True)
+    check("every interface text and Rust message has a Czech translation (tools/check_i18n.py)", rc.returncode == 0, rc.stdout[-800:])
+    cfg_path = root_e / "Data" / "config.json"
+    app = App(root_e, "s3b")
+    try:
+        app.until(lambda: app.count(".card") == 3)
+        nav_label = lambda: app.js("return document.querySelector('#nav-library span').textContent")
+        lang0 = (app.js("return document.documentElement.lang"), nav_label(), json.loads(cfg_path.read_text()).get("language"))
+        check("English by default", lang0 == ("en", "Library", "en"), str(lang0))
+        app.click("#nav-settings")
+        app.css("#st-lang input[value=cs]")
+        check("Settings > Language offers English and Čeština",
+              app.js("return [...document.querySelectorAll('#st-lang label')].map(l=>l.textContent.trim())") == ["English", "Čeština"])
+        app.js("document.querySelector('#st-lang input[value=cs]').click()")
+        app.until(lambda: app.js("return document.documentElement.lang") == "cs", msg="czech")
+        app.until(lambda: json.loads(cfg_path.read_text()).get("language") == "cs", msg="language saved")
+        nav = app.js("return [...document.querySelectorAll('#nav [data-view] span')].map(s=>s.textContent)")
+        check("switching to Czech relabels the whole window at once, saved in config.json",
+              nav == ["Knihovna", "Herní deník", "Skener archivu", "Nastavení", "O aplikaci"]
+              and app.js("return document.querySelector('.strip span').textContent") == "Nastavení"
+              and app.text("#sb-count") == "3 hry" and app.text("#sb-msg").startswith("Jazyk: Čeština"), f"{nav} {app.text('#sb-count')}")
+        st_txt = app.js("return document.querySelector('.settings').textContent")
+        check("Czech settings page (sections, theme descriptions); names like Classic stay as they are",
+              "Vzhled" in st_txt and "Databáze a zálohy" in st_txt and "Jemný jantarový terminál" in st_txt and "Terminal CRT Amber" in st_txt)
+        app.click("#nav-library")
+        app.until(lambda: app.count(".card") == 3)
+        check("library toolbar in Czech (Řazení, Filtr, Přidat hru)",
+              app.js("return document.querySelector('label[for=lib-sort]').textContent") == "Řazení"
+              and app.js("return document.getElementById('lib-filter').textContent.trim()") == "Filtr"
+              and "Přidat hru" in app.text("#lib-add"))
+        app.click("#lib-filter")
+        app.visible("#lib-filter-pop")
+        check("filter window in Czech", app.js("return [...document.querySelectorAll('.filter-title')].map(e=>e.textContent)") == ["Žánr", "Tagy"])
+        app.click("#lib-filter-x")
+        # help for locating the game folders (Archive Scanner)
+        app.js("try { localStorage.removeItem('gc-scan-help') } catch (e) {}")
+        app.click("#nav-scanner")
+        app.visible("#sc-help")
+        help_txt = app.js("return document.getElementById('sc-help').textContent")
+        check("Archive Scanner explains how game folders are found (open by default)",
+              all(s in help_txt for s in ["Vyber hlavní složku", "Jedna hra = jedna složka", "Jak se hra pozná", "Hloubka hledání", "Možný duplikát", "goggame-"]))
+        tree = app.js("return document.querySelector('#sc-help .help-tree').textContent")
+        check("the help shows an example folder tree", "Hry\\" in tree and "Baldur's Gate\\" in tree and "setup_bg.exe" in tree, tree)
+        app.js("const s=document.getElementById('sc-depth'); s.value='2'; s.dispatchEvent(new Event('change'))")
+        check("the search depth explains itself with an example path",
+              app.js("return document.getElementById('sc-depth-hint').textContent") == "Prohledá až 2 úrovně složek: Hry\\…\\Hra",
+              app.js("return document.getElementById('sc-depth-hint').textContent"))
+        app.click("#sc-help-btn")
+        check("the help can be hidden", not app.js("return document.getElementById('sc-help').offsetParent") and app.css("#sc-help-btn").get_attribute("aria-expanded") == "false")
+        app.click("#nav-library")
+        app.click("#nav-scanner")
+        app.css("#sc-help")
+        check("hiding the help is remembered", app.js("return document.getElementById('sc-help').hidden") is True)
+        app.click("#sc-help-btn")
+        app.visible("#sc-help")
+        app.shot("21b-scanner-help-cs")
+        app.type("#sc-root", str(WORK / "no-such-folder"))
+        app.click("#sc-start")
+        app.until(lambda: app.count("#sc-results .notice.err") == 1, msg="scan error")
+        err = app.text("#sc-results .notice.err")
+        check("messages from the Rust side arrive in Czech (with the path kept)", err.startswith("Složka neexistuje:") and "no-such-folder" in err, err)
+        # the game form: help for the game folder, Czech labels
+        app.click("#nav-library")
+        app.until(lambda: app.count(".card") == 3, msg="cards cs")
+        app.js("[...document.querySelectorAll('.card')].find(c=>c.innerText.includes('System Shock')).click()")
+        app.visible("#pf-notes")
+        check("game profile in Czech", app.text(".pf-d .strip") == "CO O TÉTO HŘE VÍM" or app.js("return document.querySelector('.pf-d .strip').textContent") == "Co o této hře vím")
+        summary = app.text("#pf-content .archive-summary")
+        check("file counts use Czech plural forms", re.search(r"\d+ soubor(ů|y)?", summary) is not None and "manuál" in summary, summary)
+        app.click("#pf-edit")
+        app.visible("#gf-folder-help-btn")
+        check("game folder help is closed until asked for", app.js("return document.getElementById('gf-folder-help').hidden") is True)
+        app.click("#gf-folder-help-btn")
+        app.visible("#gf-folder-help")
+        check("game form explains which folder to choose", "právě tato jedna hra" in app.text("#gf-folder-help") and "Skener archivu" in app.text("#gf-folder-help"))
+        check("Genre field still offers no suggestions", app.css("#gf-genre").get_attribute("list") is None and app.css("#gf-genre").get_attribute("autocomplete") == "off")
+        app.shot("21c-game-form-help-cs")
+        app.js("document.querySelector('.overlay .window-foot [data-close]').click()")
+        app.until(lambda: app.count(".overlay") == 0)
+        # the PDF viewer follows the language
+        main_win = app.d.current_window_handle
+        app.js("[...document.querySelectorAll('#pf-content tbody tr')].find(r=>r.innerText.includes('Manual.pdf')).querySelector('[data-open]').click()")
+        app.new_window([main_win])
+        app.until(lambda: app.text("#vw-pages") == "3", msg="pdf cs")
+        check("PDF viewer in Czech", app.js("return document.querySelector('#vw-zoom option[value=width]').textContent") == "Na šířku"
+              and "3 strany" in app.text("#vw-status") and app.text("#vw-external") == "Otevřít ve výchozí aplikaci", app.text("#vw-status"))
+        wm_close("^Manual")
+        app.until(lambda: len(app.d.window_handles) == 1, msg="viewer closed")
+        app.d.switch_to.window(main_win)
+    except Exception:
+        traceback.print_exc()
+        check("session 3b (Czech) completed without errors", False, traceback.format_exc(limit=2))
+        app.shot("error-s3b")
+    finally:
+        app.quit()
+    app = App(root_e, "s3c")
+    try:
+        app.until(lambda: app.count(".card") == 3)
+        check("Czech is kept after a restart", app.js("return document.documentElement.lang") == "cs" and nav_label() == "Knihovna")
+        app.click("#nav-settings")
+        app.css("#st-lang input[value=en]")
+        app.js("document.querySelector('#st-lang input[value=en]').click()")
+        app.until(lambda: nav_label() == "Library", msg="english again")
+        app.until(lambda: json.loads(cfg_path.read_text()).get("language") == "en", msg="english saved")
+        check("back to English in one click", app.js("return document.querySelector('.strip span').textContent") == "Settings" and app.text("#sb-count") == "3 games")
+    except Exception:
+        traceback.print_exc()
+        check("session 3c (back to English) completed without errors", False, traceback.format_exc(limit=2))
+        app.shot("error-s3c")
+    finally:
+        app.quit()
+
     # -------------------------------------------------- session 4: 500 games (test 8)
     section("Session 4 - performance with 500 games (test 8)")
     perf_root = WORK / "P" / "GAME_CURATOR"
@@ -1410,7 +1948,7 @@ def run():
         app.click("#sc-import")
         app.visible(".overlay [data-ok]", timeout=300)
         METRICS["import_500_games_s"] = round(time.perf_counter() - t, 2)
-        check("500 games imported via the scanner", "500 game(s) imported" in app.text(".overlay .dlg-text"), app.text(".overlay .dlg-text"))
+        check("500 games imported via the scanner", "500 games imported" in app.text(".overlay .dlg-text"), app.text(".overlay .dlg-text"))
         app.click(".overlay [data-ok]")
     except Exception:
         traceback.print_exc()
